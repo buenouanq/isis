@@ -1,0 +1,383 @@
+# Image Buffer protocol
+# Version 2
+# Stefan Agamanolis, March 1998
+
+#########################################################################
+# An image buffer is a list with the format of:
+# [ type alloc chans dims steps addrs ]
+
+(set buf-type 0)
+(set buf-alloc 1)
+(set buf-chans 2)
+(set buf-dims 3)
+(set buf-size 3)
+(set buf-steps 4)
+(set buf-addrs 5)
+
+# images are always "raw" data stored in separate channels.  
+
+# buf-type should be one of the c-types from the memory manipulation
+# library.
+
+# buf-alloc is True if the addresses in the addrlist should be freed
+# when the image is freed, and False if not.  if the image references
+# memory inside of another image, then this element should be False.
+
+# buf-chans is an integer number of channels
+
+# buf-dims is a list of two integers [xsize ysize] denoting the size
+# of the image
+
+# buf-steps is a list of two integers [xstep ystep] denoting the
+# horizontal and vertical step factors (in samples, not bytes) to go
+# from one picture element to the next horizontal or vertical picture
+# element.  values may be negative.
+
+# buf-addrs is a list of N addresses, where N is the number of channels
+
+#########################################################################
+# Image buffer creation/freeing functions
+
+# usage: (new-image sampletype chans dims { steps addrs })
+#                       0        1    2       3     4
+# args 3 and 4 are optional
+
+(set new-interleaved-image
+  (proc (sampletype chans dims)
+    [ sampletype True chans dims [chans (* chans (dims 0))]
+      (make-series (malloc (* (sizeof sampletype) chans (dims 0) (dims 1)))
+                   chans (sizeof sampletype)) ]))
+
+(set new-planar-image
+  (proc (sampletype chans dims)
+    [ sampletype True chans dims [1 (dims 0)]
+      (make-series (malloc (* (sizeof sampletype) chans (dims 0) (dims 1)))
+                   chans (* (sizeof sampletype) (dims 0) (dims 1))) ]))
+
+(set new-image
+  (proc args
+    (if (> (length args) 4)
+        (insert-after 0 False args)  
+        (new-planar-image (args 0) (args 1) (args 2)))))
+
+(set new-standard-image
+  (proc (chans dims)
+    (new-image c-byte chans dims)))
+
+(set free-image
+  (proc (buf)
+    (if (buf buf-alloc) (free ((buf buf-addrs) 0)))))    # free first addr only
+
+#########################################################################
+# Pixel access
+
+(set get-pixel
+  (proc (pos buf)
+    (local (steps type samplesize)
+      (begin
+        (set steps (buf buf-steps))
+        (set type (buf buf-type))
+        (set samplesize (sizeof type))
+        (map (proc (addr) 
+               ((+ addr 
+		   (* (pos 0) (steps 0) samplesize)
+		   (* (pos 1) (steps 1) samplesize)) type))
+             (buf buf-addrs))))))
+
+(set set-pixel
+  (proc (vals pos buf)
+    (local (steps type samplesize)
+      (begin
+        (set steps (buf buf-steps))
+        (set type (buf buf-type))
+        (set samplesize (sizeof type))
+        (map (proc (val addr) 
+               ((+ addr 
+		   (* (pos 0) (steps 0) samplesize)
+		   (* (pos 1) (steps 1) samplesize)) type val))
+             vals (buf buf-addrs))))))
+
+#########################################################################
+# Sub-image creation functions
+
+(set isolate-sub-image
+  (proc (loc dims buf)			# loc must be within the image!
+    (local (type xloc yloc offset)
+      (begin
+        (set type (buf buf-type))
+        (set xloc (if (< (dims 0) 0) (+ 1 (loc 0) (dims 0)) (loc 0)))
+        (set yloc (if (< (dims 1) 0) (+ 1 (loc 1) (dims 1)) (loc 1)))
+        (set offset (* (sizeof type) (+ (* ((buf buf-steps) 0) xloc)
+                                        (* ((buf buf-steps) 1) yloc))))
+        [ type
+          False
+          (buf buf-chans) 
+          (abs (map integer dims)) 
+          (buf buf-steps) 
+          (map (proc (x) (+ x offset)) (buf buf-addrs)) ]))))
+
+(set isolate-channel
+  (proc (chan buf)
+    [ (buf buf-type)
+      False
+      1 
+      (buf buf-dims) 
+      (buf buf-steps)
+      (sublist chan chan (buf buf-addrs)) ]))
+
+(set isolate-channels
+  (proc (startchan endchan buf)
+    [ (buf buf-type)
+      False
+      (- endchan startchan -1)
+      (buf buf-dims) 
+      (buf buf-steps)
+      (sublist startchan endchan (buf buf-addrs)) ]))
+
+(set combine-channels
+  (proc bufs
+    (local (type dims steps numbufs totchans ct ok)
+      (begin
+        (set type ((bufs 0) buf-type))
+        (set dims ((bufs 0) buf-dims))
+        (set steps ((bufs 0) buf-steps))
+        (set numbufs (length bufs))
+        (set totchans ((bufs 0) buf-chans))
+        (set ct 1)
+        (set ok True)
+        (while (and ok (< ct numbufs))
+          (begin
+            (if (or (!= type ((bufs ct) buf-type))
+                    (!= dims ((bufs ct) buf-dims))
+                    (!= steps ((bufs ct) buf-steps)))
+                (set ok False))
+            (set totchans (+ totchans ((bufs ct) buf-chans)))
+            (set ct (+ ct 1))))
+        (if ok
+            [ type 
+              False
+              totchans 
+              dims 
+              steps
+              (apply append (map (proc (x) (x buf-addrs)) bufs)) steps ]
+            (print "*** combine-channels: images are incompatible.\n"))))))
+
+(set refer-image
+  (proc (buf)
+    (change-item buf-alloc False buf)))
+
+#########################################################################
+# Intersecting images
+
+(set intersect-rectangles
+  (proc (rect1pos rect1size rect2size)
+    (local (r1xpos r1ypos r1xsize r1ysize r2xsize r2ysize
+                   r1xstart r1ystart r2xstart r2ystart crxsize
+                   crysize)
+      (begin
+        (set r1xpos (rect1pos 0))
+        (set r1ypos (rect1pos 1))
+        (set r1xsize (rect1size 0))
+        (set r1ysize (rect1size 1))
+        (set r2xsize (rect2size 0))
+        (set r2ysize (rect2size 1))
+        (set r1xstart 0)
+        (set r1ystart 0)
+        (set r2xstart r1xpos)
+        (set r2ystart r1ypos)
+        (set crxsize (if (> (+ r1xpos r1xsize) r2xsize)
+                         (- r1xsize (- (+ r1xpos r1xsize) r2xsize))
+                         r1xsize))
+        (set crysize (if (> (+ r1ypos r1ysize) r2ysize)
+                         (- r1ysize (- (+ r1ypos r1ysize) r2ysize))
+                         r1ysize))
+        (if (< r2xstart 0)
+            (begin
+              (set r1xstart (* -1 r2xstart))
+              (set crxsize (+ crxsize r2xstart))
+              (set r2xstart 0)))
+        (if (< r2ystart 0)
+            (begin
+              (set r1ystart (* -1 r2ystart))
+              (set crysize (+ crysize r2ystart))
+              (set r2ystart 0)))
+        (if (or (<= crxsize 0) (<= crysize 0))
+            [[0 0] [0 0] [0 0]]
+            [[r1xstart r1ystart] [r2xstart r2ystart] [crxsize crysize]])))))
+
+(set intersect-images
+  (proc (buf1pos buf1 buf2)
+    (local (res)
+      (begin
+        (set res (intersect-rectangles buf1pos 
+                                       (buf1 buf-dims) (buf2 buf-dims)))
+        [(isolate-sub-image (res 0) (res 2) buf1)
+         (isolate-sub-image (res 1) (res 2) buf2)]))))
+
+
+#########################################################################
+# Read/write images
+
+(set image-io-buf Null)
+(set image-io-buf-size 0)
+
+(set allocate-image-io-buf
+  (proc (size)
+    (begin
+      (if image-io-buf (free image-io-buf))
+      (set image-io-buf (malloc (set image-io-buf-size size))))))
+
+(set write-image
+  (proc (file buf)
+    (local (sampletype samplesize chans dims steps bufsize
+                       sendbuf)
+      (begin
+        (set sampletype (buf buf-type))
+        (set samplesize (sizeof sampletype))
+        (set chans (buf buf-chans))
+        (set dims (buf buf-dims))
+        (set steps (buf buf-steps))
+        (set bufsize 0)
+        (set sendbuf Null)
+        (if (or (!= (steps 0) 1) (!= (steps 1) (dims 0)))
+            (begin
+              (set bufsize (* samplesize chans (dims 0) (dims 1)))
+              (if (> bufsize image-io-buf-size)
+                  (allocate-image-io-buf bufsize))
+              (set sendbuf 
+                (new-image sampletype chans dims [ 1 (dims 0) ] 
+                           (map (proc (c) 
+                                  (+ image-io-buf 
+                                     (* c (dims 0) (dims 1) 
+                                        samplesize)))
+                                (make-series 0 chans 1))))
+              (image-transfer buf sendbuf)
+              (write-raw file bufsize image-io-buf))
+            (begin
+              (set bufsize (* samplesize (dims 0) (dims 1)))
+              (map (proc (x) (write-raw file bufsize x))
+                   (buf buf-addrs))))))))
+
+(set read-image
+  (proc (file buf)
+    (local (sampletype samplesize chans dims steps bufsize
+                       recvbuf)
+      (begin
+        (set sampletype (buf buf-type))
+        (set samplesize (sizeof sampletype))
+        (set chans (buf buf-chans))
+        (set dims (buf buf-dims))
+        (set steps (buf buf-steps))
+        (set bufsize 0)
+        (set recvbuf Null)
+        (if (or (!= (steps 0) 1) (!= (steps 1) (dims 0)))
+            (begin
+              (set bufsize (* samplesize chans (dims 0) (dims 1)))
+              (if (> bufsize image-io-buf-size)
+                  (allocate-image-io-buf bufsize))
+              (set recvbuf 
+                (new-image sampletype chans dims [ 1 (dims 0) ] 
+                           (map (proc (c) 
+                                  (+ image-io-buf 
+                                     (* c (dims 0) (dims 1) 
+                                        samplesize)))
+                                (make-series 0 chans 1))))
+              (read-raw file bufsize image-io-buf)
+              (image-transfer recvbuf buf))
+            (begin
+              (set bufsize (* samplesize (dims 0) (dims 1)))
+              (map (proc (x) (read-raw file bufsize x))
+                   (buf buf-addrs))))))))
+
+#########################################################################
+# Other helpful functions
+
+(set horizontal-mirror-image
+  (proc (buf)
+    (local (dims steps shift)
+      (begin
+        (set dims (buf buf-dims))
+        (set steps (buf buf-steps))
+        (set shift (* (- (dims 0) 1) (steps 0) (sizeof (buf buf-type))))
+        [ (buf buf-type)
+          False
+          (buf buf-chans)
+          (buf buf-dims)
+          (* [-1 1] (buf buf-steps)) 
+          (map (proc (x) (+ x shift)) (buf buf-addrs)) ]))))
+
+(set vertical-mirror-image
+  (proc (buf)
+    (local (dims steps shift)
+      (begin
+        (set dims (buf buf-dims))
+        (set steps (buf buf-steps))
+        (set shift (* (- (dims 1) 1) (steps 1) (sizeof (buf buf-type))))
+        [ (buf buf-type)
+          False
+          (buf buf-chans)
+          (buf buf-dims)
+          (* [1 -1] (buf buf-steps)) 
+          (map (proc (x) (+ x shift)) (buf buf-addrs)) ]))))
+
+(set transpose-image
+  (proc (buf)
+    [ (buf buf-type)
+      False
+      (buf buf-chans)
+      (reverse (buf buf-dims))
+      (reverse (buf buf-steps))
+      (buf buf-addrs) ]))
+
+(set subsample-image
+  (proc (subfactor buf)
+    (local (sub)
+      (begin
+        (set sub (if (list? subfactor) subfactor [subfactor subfactor]))
+        [ (buf buf-type)
+          False
+          (buf buf-chans)
+          (/ (buf buf-dims) sub)
+          (* (buf buf-steps) sub)
+          (buf buf-addrs) ]))))
+
+(set bounding-rectangle
+  (proc points
+    (local (minx miny maxx maxy)
+      (begin
+        (set minx 10000000)
+        (set miny 10000000)
+        (set maxx -10000000)
+        (set maxy -10000000)
+        (map (proc (x) (begin
+                         (if (< x minx) (set minx x))
+                         (if (> x maxx) (set maxx x))))
+             (map (proc (p) (p 0)) points))
+        (map (proc (y) (begin
+                         (if (< y miny) (set miny y))
+                         (if (> y maxy) (set maxy y))))
+             (map (proc (p) (p 1)) points))
+        [minx miny maxx maxy]))))
+
+(set rectangle-size
+  (proc (rect)
+    [ (- (rect 2) (rect 0) -1)
+      (- (rect 3) (rect 1) -1) ]))
+
+#########################################################################
+# error functions:
+
+(set image-buf-error
+  (proc args
+    (begin
+      (print "*** " (args 0) ": incompatible buffers" newline)
+      (map display (allbutfirst 1 args))
+      Null)))
+
+(set image-type-error
+  (proc args
+    (begin
+      (print "*** " (args 0) ": unsupported image type" newline)
+      (map display (allbutfirst 1 args))
+      Null)))
+

@@ -1,0 +1,40 @@
+############################################################################
+# Macaroni SPINMOVIE
+# Displays a single Isis movie in the center of the screen, rotating
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Spinmovie")
+(set macwin (macaroni-create-window "Spinmovie" [300 300] [100 100] True))
+
+############################################################################
+# Open the Isis Movie object
+
+(set movie (new-isis-movie "/usr/local/isis/media/repo"))
+
+############################################################################
+# Create Macaroni movie and transform objects
+
+(set mobj (mac-new-isis-movie [mac-movie movie]))
+
+(set mtrans (mac-new-transform [mac-object mobj]
+                               [mac-position [150.0 150.0]]
+                               [mac-scale 0.75 0.75]))
+
+############################################################################
+# Start rendering, updating the rotation and frame number according
+# the the current time, assuming there are 30 frames per second
+
+(set timer (new-timer))
+(set rot 0.0)
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (set rot (+ rot 1.0))
+     (mobj [mac-frame (integer (* (timer) 30.0))])
+     (mtrans [mac-rotation rot])
+     (macaroni-update-window macwin mtrans True))))

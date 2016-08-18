@@ -1,0 +1,46 @@
+(load "super-infobox.isis")
+(load "imagefont.isis")
+
+(set helvB20 (imagefont-load "Helvetica-Bold" 20))
+(set helvB24 (imagefont-load "Helvetica-Bold" 24))
+(set helvB28 (imagefont-load "Helvetica-Bold" 28))
+
+(set titleimage
+  (create-info-box
+   [ 320 240 ]
+   [ [ [ "type" "box" ]
+       [ "position" [0 0] ]
+       [ "size" [320 240] ]
+       [ "color" [30 30 30] ] ]
+     [ [ "type" "text" ]
+       [ "position" [ 160 70 ] ]
+       [ "align" "center" ]
+       [ "valign" "center" ]
+       [ "font" helvB28 ] 
+       [ "text" "Aisling Kelliher" ] ] 
+     [ [ "type" "text" ]
+       [ "position" [ 160 115 ] ]
+       [ "align" "center" ]
+       [ "valign" "center" ]
+       [ "font" helvB20 ] 
+       [ "text" "for" ] ] 
+     [ [ "type" "text" ]
+       [ "position" [ 160 148 ] ]
+       [ "align" "center" ]
+       [ "valign" "center" ]
+       [ "font" helvB24 ] 
+       [ "text" "MIT Media Lab" ] ] 
+     [ [ "type" "text" ]
+       [ "position" [ 160 175 ] ]
+       [ "align" "center" ]
+       [ "valign" "center" ]
+       [ "font" helvB24 ] 
+       [ "text" "Student Committee" ] ] 
+     ]))
+
+(display titleimage)
+
+(easywin-create (titleimage 0))
+
+(read-string)
+     

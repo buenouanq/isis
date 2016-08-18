@@ -1,0 +1,11 @@
+
+(print "Please enter username: ")
+
+(set username (read-string))
+
+(if (= username "stefan") 
+    (print "Welcome Sir." newline)
+    (print "Access denied." newline))
+
+
+

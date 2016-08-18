@@ -1,0 +1,12 @@
+[ "imagefile" "images" ] 
+[ "widthfile" "widths" ] 
+[ "fontname" "Times-Bold" ] 
+[ "fontheight" 56 ] 
+[ "boxsize" [ 64 64 ] ] 
+[ "startchar" 32 ] 
+[ "numchars" 96 ] 
+[ "pagesize" [ 512 512 ] ] 
+[ "spacewidth" 19.6 ] 
+[ "chans" 1 ] 
+[ "bits" 8 ] 
+

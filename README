@@ -1,0 +1,65 @@
+
+--------------------------------------------------------------------------
+
+The Isis programming language
+
+Created by Stefan Agamanolis (stefan@media.mit.edu)
+
+Additional code authored by various people (see source files).
+
+Copyright (C) 1995-2004 
+Massachusetts Institute of Technology and Media Lab Europe
+
+http://www.medialabeurope.org/isis
+http://www.media.mit.edu/isis
+
+--------------------------------------------------------------------------
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+--------------------------------------------------------------------------
+
+Additional disclaimers and comments:
+
+* Due primarily to my lack of time, there is ABSOLUTELY NO SUPPORT AND
+MAINTENANCE available for Isis.  Please consider this carefully when
+making your choice of software to use for your project.  You are free
+to write to me informally with questions and bug reports, but do not
+expect a response quickly or at all.  However, I or others that I can
+recommend might be available on a consultant/payment basis to assist
+with Isis programming issues -- please email me for information.
+
+* If you use Isis in a project or product, please consider including a
+message to this effect somewhere in the project's documentation or
+credits and a link/URL to the Isis web site if possible.
+
+* I like to keep track of what people are doing with Isis!  Send me a
+link or document about your project.  I might ask you if I can post
+your link on the Isis web site.
+
+* If you make a cool Isis or C library that you think others might
+like to use, let me know and, when I get a chance, I'll add a link to
+it from the Isis web site.
+
+* Isis has thus far benefited from a high level of interoperability
+and backward compatibility.  Therefore, I would like to discourage
+changes begin made to the core Isis interpreter code since it may
+result in incompatible syntax or unexpected behavior.  If you do make
+changes to the core language and intend to distribute them, please
+give your variant a different name.
+
+--------------------------------------------------------------------------
+
+

@@ -1,0 +1,11 @@
+
+(set x 10)
+
+(while (> x 0) 
+  (begin 
+    (print x) 
+    (sleep 1) 
+    (set x (- x 1))))
+
+(print "Blastoff!" newline)
+

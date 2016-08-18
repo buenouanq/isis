@@ -1,0 +1,11 @@
+# Defeat the memory manager
+
+(while True
+  (begin
+    (set p 
+      (local (pstore) 
+        (proc (x) 
+          (set pstore x))))
+    (p p)
+    (set p Null)))
+

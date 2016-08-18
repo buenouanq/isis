@@ -1,0 +1,60 @@
+### isis microtouch touch screen interface
+### written by stefan agamanolis
+
+###########################################################################
+# MICROTOUCH TOUCHSCREEN (DIRECTLY CONNECTED TO A SERIAL PORT)
+#
+# To use:  1. (set microtouch-port (microtouch-initialize "/dev/tty00"))
+#          2. (microtouch-value microtouch-port)
+
+(set microtouch-readbuf (malloc 48))
+
+(set microtouch-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 microtouch-readbuf))))
+
+(set microtouch-initialize
+  (proc (device-name)
+    (local (port)
+      (begin
+        (set port (open-update device-name))
+        (set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl) 0 9600 9600)
+        (microtouch-flush-port port)
+        port))))
+
+(set microtouch-header-char (character 1))
+
+(set microtouch-send-command
+  (proc (port str)
+    (write-string port microtouch-header-char str return)))
+
+(set microtouch-read-response
+  (proc (port)
+    (local (resp c)
+      (begin
+        (set resp [])
+        (set c 0)
+        (read-raw port 1 microtouch-readbuf)
+        (while (!= c return)
+          (begin
+            (read-raw port 1 microtouch-readbuf)
+            (set c (microtouch-readbuf c-char))
+            (set resp (tail-insert c resp))))
+        (allbutlast 1 resp)))))
+
+(set microtouch-read-packet
+  (proc (port)
+    (local (status packet)
+      (begin
+	(read-raw port 1 microtouch-readbuf)
+	(set status (microtouch-readbuf c-byte))
+	(while (not (bit-and status 128))               # synchronize with start packet
+	  (begin
+	    (read-raw port 1 microtouch-readbuf)
+	    (set status (microtouch-readbuf c-byte))))
+	(read-raw port 4 microtouch-readbuf)
+        (set packet (microtouch-readbuf [c-byte 4]))
+        [ (>> (+ (packet 0) (<< (packet 1) 7)) 3)
+          (>> (+ (packet 2) (<< (packet 3) 7)) 3) 
+          (boolean (bit-and status 64)) ]))))
+

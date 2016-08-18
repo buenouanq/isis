@@ -1,0 +1,219 @@
+############################################################################
+# Platform independent window objects
+# for displaying images, etc.
+# Stefan Agamanolis
+############################################################################
+
+############################################################################
+# Constants
+
+(set win-type 1000)
+(set win-size 1001)
+(set win-title 1002)
+(set win-pos 1003)
+
+(set win-buf 1005)
+(set win-output 1007)
+
+(set win-put 1006)
+(set win-combfunc 1008)
+
+(set win-close 1009)
+
+############################################################################
+# Window object
+
+# Commands:
+
+# [win-type typestr]         # "external" or "default"
+# [win-size [xsize ysize]]   # size of window in pixels
+# [win-title titlestr]       # title
+# [win-pos [xpos ypos]]      # position relative to origin
+# [win-combfunc func]        # image combination func:  (func put-command image)
+
+# [win-put image {pos}]      # transfer an image into the buffer, optional pos
+# [win-buf]                  # return image buffer to use for processing
+# [win-output]               # output the buffer as it is now, return next buffer
+# [win-close]                # close and destroy window
+
+(set win-simple-combfunc
+  (proc (arg dest)
+    (local (src pos)
+      (begin
+        (set src (arg 1))
+        (set pos (if (> (length arg) 2) (arg 2) [0 0]))
+        (set subbufs (intersect-images pos src dest))
+        (switch (src buf-chans)
+          (3 (image-transfer (subbufs 0) (subbufs 1)))
+          (4 (image-transfer (isolate-channels 0 2 (subbufs 0)) (subbufs 1)))
+          (else (begin 
+                  (image-transfer (isolate-channel 0 (subbufs 0)) 
+                                  (isolate-channel 0 (subbufs 1)))
+                  (image-transfer (isolate-channel 0 (subbufs 0)) 
+                                  (isolate-channel 1 (subbufs 1)))
+                  (image-transfer (isolate-channel 0 (subbufs 0)) 
+                                  (isolate-channel 2 (subbufs 1))))))))))
+
+(set win-create
+  (proc args
+    (local (combfunc type title pos size background)
+      (begin
+        (set title "Isis")
+        (set pos [100 100])
+        (set size [350 350])
+        (set combfunc win-simple-combfunc)
+
+        (map (proc (arg)
+               (switch (arg 0)
+                 (win-type (set type (arg 1)))
+                 (win-title (set title (arg 1)))
+                 (win-pos (set pos (arg 1)))
+                 (win-size (set size (arg 1)))))
+             args)
+
+        (set type
+          (switch type
+            ("external" (cond ((bound? isis_mil) "mil")
+                              ((bound? isis_mme_video) "mme")))
+            (else (cond ((bound? isis_xwin) "xwin")
+                        ((bound? isis_mil) "mil")
+                        ((bound? isis_glut) "glut")
+                        ((bound? isis_mme_video) "mme")))))
+
+        (switch type
+
+          ("xwin" 
+           (local (xwin ximage handler)
+             (begin
+               (set ximage (image-fill-constant 0 (new-standard-image 3 size)))
+               (set xwin (xwin-create Null title pos size))
+               (set handler
+                 (proc (arg)
+                   (switch (arg 0)
+                     (win-put (combfunc arg ximage))
+                     (win-buf ximage)
+                     (win-output (begin (xwin-display-image xwin ximage) ximage))
+                     (win-title (xwin-title xwin (set title (arg 1))))
+                     (win-pos (xwin-move xwin (set pos (arg 1))))
+                     (win-size (xwin-resize xwin (set size (arg 1))))
+                     (win-combfunc (set combfunc (arg 1)))
+                     (win-close (begin (xwin-destroy xwin)
+                                       (set xwin Null))))))
+               (map handler args)
+               (proc args (tail (map handler args))))))
+
+          ("mil" 
+           (local (milapp milsys mildisp milbuf milimage subbufs handler)
+             (begin
+               (set milapp (mil-find-app))
+               (set milsys (mil-find-sys))
+               (set mildisp (MdispAlloc milsys M_DEFAULT M_DISPLAY_SETUP M_DEFAULT M_NULL))
+               (set milbuf (MbufAllocColor milsys 3 (size 0) (size 1) 
+                                           (+ 8 M_UNSIGNED) (+ M_IMAGE M_DISP) M_NULL))
+               (set milimage (image-fill-constant 0 (access-mil-image milbuf)))
+               (set titlestr (pack (tail-insert (character 0) title) c-char))
+               (MdispControl mildisp M_WINDOW_TITLE_NAME (integer titlestr))
+               (MdispControl mildisp M_WINDOW_INITIAL_POSITION_X (pos 0))
+               (MdispControl mildisp M_WINDOW_INITIAL_POSITION_Y (pos 1))
+               (MdispSelect mildisp milbuf)
+               (MdispControl mildisp M_WINDOW_MENU_BAR M_DISABLE)
+               (set handler
+                 (proc (arg)
+                   (switch (arg 0)
+                     (win-put (combfunc arg milimage))
+                     (win-buf milimage)
+                     (win-output (begin (MbufControl milbuf M_MODIFIED 0.0) milimage))
+                     (win-combfunc (set combfunc (arg 1)))
+                     (win-close (begin (free titlestr)
+                                       (MbufFree milbuf)
+                                       (MdispFree mildisp)
+                                       (set milbuf (set mildisp Null)))))))
+               (map handler args)
+               (proc args (tail (map handler args))))))
+
+          ("mme"
+           (local (mme numbufs curbuf outstanding mmebufs mmebuf
+                       bufs buf handler)
+             (begin
+               (set mme (mme-init-write-frame mme-rgb size))
+               (if mme
+                   (begin
+                     # (mme-stream-init mme)
+                     # (mme-stream-start mme)
+                     (set numbufs 1)
+                     (set curbuf 0)
+                     (set outstanding 0)
+                     (set mmebufs (map (proc (x) (mme-create-buffer mme-rgb size))
+                                       (make-list numbufs Null)))
+                     # (map (proc (x) (mme-prepare-buffer mme x)) mmebufs)
+                     (set bufs (map (proc (x) (mme-extract-image mme-rgb 3 size x)) 
+                                    mmebufs))
+                     (map (proc (x) (image-fill-constant 0 x)) bufs)
+                     (set mmebuf (mmebufs curbuf))
+                     (set buf (bufs curbuf))
+                     (set handler
+                       (proc (arg)
+                         (switch (arg 0)
+                           (win-put (combfunc arg buf))
+                           (win-buf buf)
+                           (win-output (begin 
+                                         (mme-write-frame mme mmebuf)
+                                         # (set outstanding (+ outstanding 1))
+                                         # (set curbuf (% (+ curbuf 1) numbufs))
+                                         # (set mmebuf (mmebufs curbuf))
+                                         # (set buf (bufs curbuf))
+                                         # (if (= outstanding numbufs)
+                                         #     (begin
+                                         #       (mme-stream-wait-for-buffer mme)
+                                         #       (set outstanding (- outstanding 1))))
+                                         buf))
+                           (win-combfunc (set combfunc (arg 1)))
+                           (win-close (begin
+                                        # (mme-stream-stop mme)
+                                        # (while outstanding
+                                        #   (begin
+                                        #     (mme-stream-wait-for-buffer mme)
+                                        #     (set outstanding (- outstanding 1))))
+                                        # (mme-stream-finish mme)
+                                        (map (proc (x) 
+                                               (begin
+                                                 # (mme-unprepare-buffer mme x)
+                                                 (mme-free-buffer x)))
+                                             mmebufs)
+                                        (mme-close mme)
+                                        (set mme Null))))))
+
+                     (map handler args)
+                     (proc args (tail (map handler args))))
+                   (begin
+                     (print "Video device could not be opened." newline)
+                     (proc args Null))))))
+
+          )))))
+
+
+############################################################################
+# Easy window
+
+(set easywin-create
+  (proc args
+    (local (image title pos win)
+      (begin
+        (set image (args 0))
+        (set title (if (> (length args) 1) (args 1) "Isis"))
+        (set pos (if (> (length args) 2) (args 2) [100 100]))
+        (set win (win-create [win-size (image buf-dims)]
+			     [win-pos pos]
+			     [win-title title]
+			     [win-put image]))
+ 	(microsleep 10000)  
+	# this sleep is needed on alphas to let the size change filter through
+	# without it, the window might stay blank after a win-output
+	(win [win-output])
+	win))))
+
+(set easywin-close
+  (proc (win)
+    (win [win-close])))
+
+############################################################################

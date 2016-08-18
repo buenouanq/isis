@@ -1,0 +1,28 @@
+############################################################################
+# Macaroni SIMPLEIMAGE
+# Displays a single image in the center of the screen
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Simpleimage")
+(set macwin (macaroni-create-window "Simpleimage" [300 300] [100 100] True))
+
+############################################################################
+# Create Macaroni image and transform objects
+
+(set iobj (mac-new-image [mac-url "file:/usr/local/isis/media/nana.jpg"]))
+
+(set itrans (mac-new-transform [mac-object iobj]
+                               [mac-position [150.0 150.0]]
+                               [mac-rotation 30.0]
+                               [mac-scale [0.5 0.5]]))
+
+############################################################################
+# Update window and start rendering
+
+(macaroni-update-window macwin itrans True)
+(macaroni-start Null)
+

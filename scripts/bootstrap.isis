@@ -1,0 +1,67 @@
+# Isis global bootstrap script 
+
+# This file is automatically loaded by Isis at startup unless you
+# use the -b command line option to supress bootstrap loading
+
+# Change the setting of isis-root below to reflect the location of
+# Isis on your system:
+
+(set isis-root "/usr/local/isis")
+
+(set bootstrap True)
+
+(set pack (proc args
+	    (if (or (< (length args) 2)
+		    (not (list? (args 0)))
+		    (not (integer (args 1))))
+		(print "** pack: expects list, c-type, maxitems, bufaddr" newline)
+		(local (val type len addr)
+		  (begin
+		    (set val (args 0))
+		    (set type (args 1))
+		    (set len (if (> (length args) 2) 
+				 (min (args 2) (length val)) 
+				 (length val)))
+		    (set addr (if (> (length args) 3) 
+				  (args 3) 
+				  (allocate-memory (* len (sizeof type)))))
+		    (addr [type len] val)
+		    addr)))))
+(set malloc allocate-memory)
+(set free free-memory)
+
+# add the master scripts directory to the load path
+
+(if (bound? isis_unix)
+    (begin
+      (set-input-port (unix-new-port-FD "Standard Input" 0 True False))
+      (set-output-port (unix-new-port-FD "Standard Output" 1 False True))))
+(set tempport (open-input (append isis-root "/scripts/port-utilities.isis")))
+(interpret-port tempport)
+(close tempport)
+(add-load-path (append isis-root "/scripts"))
+
+# load libraries
+
+(load "list-utilities.isis")
+(load "timeline.isis")
+(load "structure.isis")
+
+(load "image-buffer.isis")
+(load "image-window.isis")
+(load "video-capture.isis")
+(load "internet-utilities.isis")
+(load "sendmail.isis")
+(load "postscript.isis")
+(load "timer.isis")
+(load "audio-utilities.isis")
+(load "movie-utilities.isis")
+
+(if (bound? isis_unix) (load "unix-library.isis"))
+(if (bound? isis_improc) (load "image-processing.isis"))
+(if (bound? isis_stats) (load "image-stats.isis"))
+(if (bound? isis_color) (load "image-color.isis"))
+(if (or (bound? isis_gif) (bound? isis_jpeg)) (load "image-coding.isis"))
+(if (bound? isis_xwin) (load "xwin-helpers.isis"))
+(if (bound? isis_v4l2) (load "v4l2-utilities.isis"))
+(if (bound? isis_readline) (load "readline-utilities.isis"))

@@ -1,0 +1,77 @@
+############################################################################
+# Macaroni LIVEVIDEO
+# Uses the Isis video capture library to display live video in Macaroni.
+# See Isis OpenGL documentation for more info on "gl-" functions.
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Live Video")
+(set macwin (macaroni-create-window "Live Video" [300 300] [100 100] True))
+
+############################################################################
+# Set up video capture
+
+(set framesize [320 240])
+(set vidcap (new-video-capture [vc-size framesize]))
+
+# create a GL format image buffer for the video image
+
+(set frameimage (gl-new-image 3 framesize))
+
+############################################################################
+# Create Macaroni movie and transform objects
+
+# find size of GL texture that will fit the video image
+
+(set texsize (gl-find-texture-size framesize))
+
+# create a dummy blank image of that size
+
+(set teximage (gl-new-image 3 texsize))
+(image-fill-constant 128 teximage)
+
+# create a Macaroni dynamic image object and initialize with that image.
+# set parameters so that the positioning point is the center of the image
+
+(set diobj (mac-new-dynamic-image [mac-size (map real framesize)]
+				  [mac-position (map real (/ framesize [-2 -2]))]
+				  [mac-image teximage]
+				  [mac-texsize (map real texsize)]
+				  [mac-texposition (map real (/ framesize [-2 -2]))]))
+
+# free the dummy blank image
+
+(free-image teximage)
+
+# create the Macaroni transform to position/scale/rotate the video image
+
+(set ditrans (mac-new-transform [mac-object diobj]
+				[mac-position [150.0 150.0]]
+				[mac-scale 0.75]
+				[mac-rotation 0.0]))
+
+############################################################################
+# Start rendering repeatedly
+
+(macaroni-start 
+ (proc ()
+   (begin
+     
+     # capture the next frame of video
+     (set capimage (vidcap))
+
+     # vertically mirror and transfer it into a GL format image buffer
+     (image-transfer (vertical-mirror-image capimage) frameimage)
+
+     # transfer the GL image into the texture
+     (diobj [mac-subimage frameimage [0 0]])
+
+     # mark the window to be drawn
+     (macaroni-update-window macwin ditrans True)
+
+     )))
+
+

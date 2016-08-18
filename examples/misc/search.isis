@@ -1,0 +1,16 @@
+
+# search finds an item in a list (or a character in a string)
+# returns the index of the first occurrence
+
+(set search
+  (proc (item list)
+    (local (len pos index)
+      (begin
+        (set len (length list))
+        (set pos 0)
+        (set index Null)
+        (while (and (= index Null) (< pos len))
+          (if (= item (list pos))
+              (set index pos)
+              (set pos (+ pos 1))))
+        index))))

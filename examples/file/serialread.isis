@@ -1,0 +1,6 @@
+
+(set port (open-input "/dev/ttyS0"))
+
+(initialize-serial-port port 9600 8 1 Null False) 
+
+(while True (print (read-string port) newline))

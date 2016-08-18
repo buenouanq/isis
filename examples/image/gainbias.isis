@@ -1,0 +1,28 @@
+# An example using image processing, x windows, and www libraries
+# Retrieves an image from a URL, and lets the user brighten or darken it.
+
+# first argument should be a URL
+# second argument should be gain
+# third argument should be bias
+
+(set url (command-line-args 0))
+(set gain (eval (command-line-args 1)))
+(set bias (eval (command-line-args 2)))
+
+(if (not (set original-image (retrieve-url-image url))) (exit))
+
+(set channels (original-image buf-chans))
+(set framesize (original-image buf-dims))
+
+(print "Your image has " channels 
+       "channels, and its size is " framesize newline)
+
+(set win (xwin-create Null "Original Image" [100 100] (* [1 2] framesize)))
+
+(set modified-image (new-standard-image channels framesize))
+
+(while True
+  (begin
+    (image-gainbias gain bias original-image modified-image)
+    (xwin-display-image win original-image)
+    (xwin-display-image win modified-image [0 (framesize 1)])))

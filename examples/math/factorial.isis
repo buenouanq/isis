@@ -1,0 +1,10 @@
+
+
+(set factorial
+  (proc (x) 
+    (if (< x 2) 
+	1 
+	(* x (factorial (- x 1))))))
+
+(set fact (proc (x) (if (< x 2) 1 (* x (fact (- x 1))))))
+

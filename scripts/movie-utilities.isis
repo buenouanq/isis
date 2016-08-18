@@ -1,0 +1,1786 @@
+# movie utilities
+
+
+# http://www.ora.com/centers/gff/formats/micriff/index.htm
+
+(set avi-read-info
+  (proc (port)
+    (local (info chunkinfo listid fullsize hlistsize slistsize mlistsize rlistsize readsize readbuf index framecount
+		 headlist numstreams audstream vidstream movistart vidinfo audinfo numrecords
+		 lastvid lastaud curoffset)
+      (begin
+	(if (not (bound? riff-junkbuf)) (set riff-junkbuf (malloc 12)))
+	(set info (new-structure))
+	(set chunkinfo (riff-read-header port))
+	(set listid (riff-read-list-id port))
+	(if (or (!= (chunkinfo 0) "RIFF") 
+		(!= listid "AVI "))
+	    (print "Not an AVI RIFF file." newline)
+	    (begin
+	      (set fullsize (chunkinfo 1))
+	      (while (set chunkinfo (riff-read-header port))
+		(switch (chunkinfo 0)
+		  ("LIST" (begin
+			    (set listid (riff-read-list-id port))
+			    (switch listid
+			      ("hdrl" (begin
+					(set hlistsize (- (chunkinfo 1) 4))
+					# (print "Header list chunk here " hlistsize chunkinfo newline)
+					(set numstreams 0)
+					(while hlistsize
+					  (begin
+					    (set chunkinfo (riff-read-header port))
+					    (set readsize (bit-and (bit-not 1) (+ (chunkinfo 1) 1)))
+					    (set hlistsize (- hlistsize readsize 8))
+					    (switch (chunkinfo 0)
+					      ("LIST" (begin
+							(set listid (riff-read-list-id port))
+							(switch listid
+							  ("strl" (begin
+								    (set slistsize (- (chunkinfo 1) 4))
+								    # (print "strl LIST chunk here " slistsize chunkinfo newline)
+								    (set numstreams (+ numstreams 1))
+								    (while slistsize
+								      (begin
+									(set chunkinfo (riff-read-header port))
+									(set readsize (bit-and (bit-not 1) (+ (chunkinfo 1) 1)))
+									(set slistsize (- slistsize readsize 8))
+									(switch (chunkinfo 0)
+									  ("strh" (begin
+										    (set readbuf (riff-read-chunk port (chunkinfo 1)))
+										    (set datatype (readbuf [c-char 4]))
+										    (set headlist (readbuf [c-int 10 8]))
+										    (free readbuf)
+										    # (print "Stream header chunk " newline)
+										    # (display chunkinfo datatype headlist)
+										    (switch datatype
+										      ("auds" (begin
+												(info "has-audio" True)
+												(set audstream (info "audio-stream" (- numstreams 1)))
+												(info "audio-rate" 
+												      (integer (/ (real (headlist 4)) (headlist 3))))))
+										      ("vids" (begin
+												(info "has-video" True)
+												(set vidstream (info "video-stream" (- numstreams 1)))
+												(info "video-rate" (/ (real (headlist 4)) (headlist 3)))
+												(set framecount (info "video-framecount" (headlist 6)))
+												(info "video-bufsize" (headlist 7))
+												(info "video-quality" (headlist 8))))
+										      (else (print "Unrecognized stream datatype " datatype newline)))))
+									  ("strf" (begin
+										    # (print "Stream format chunk here." chunkinfo newline)
+										    (set readbuf (riff-read-chunk port (chunkinfo 1)))
+										    (switch datatype
+										      ("auds" (begin
+												(info "audio-format" (switch (readbuf [c-short 0])
+														       (1 "PCM")
+														       (else Null)))
+												(info "audio-channels" (readbuf [c-short 0 2]))
+												(info "audio-rate" (readbuf [c-int 0 4]))
+												(info "audio-bits" (readbuf [c-short 0 14]))))
+										      ("vids" (begin
+												(info "video-framesize" (readbuf [c-int 2 4]))
+												(info "video-bits" (readbuf [c-short 0 14]))
+												(info "video-format" (readbuf [c-char 4 16]))
+												(info "video-imagesize" (readbuf [c-int 0 20]))))
+										      (else (print "Unrecognized stream datatype " datatype newline)))
+										    (free readbuf)))
+									  ("strd" (begin
+										    # (print "Stream data chunk here." newline)
+										    (riff-skip-chunk port (chunkinfo 1))))
+									  (else (begin
+										  # (print "Skipping unknown strl chunk " chunkinfo newline)
+										  (riff-skip-chunk port (chunkinfo 1)))))))))
+							  (else (begin
+								  # (print "skipping unknown hdrl LIST chunk" chunkinfo listid newline) 
+								  (riff-skip-chunk port (- (chunkinfo 1) 4)))))))
+					      ("avih" (begin
+							# (print "AVI header chunk here" newline)
+							(set readbuf (riff-read-chunk port (chunkinfo 1)))
+							(set headlist (readbuf [c-int 14]))
+							(free readbuf)
+							(info "has-index" (boolean (bit-and 0b10000 (headlist 3))))
+							(info "use-index" (boolean (bit-and 0b100000 (headlist 3))))
+							(info "interleaved" (boolean (bit-and 0b100000000 (headlist 3))))
+							# (display headlist)
+							))
+					      (else (begin
+						      # (print "Skipping unrecognized hdrl chunk " chunkinfo newline)
+						      (riff-skip-chunk port (chunkinfo 1)))))))))
+			      ("movi" (begin
+					(set mlistsize (- (chunkinfo 1) 4))
+					# (print "Movie list chunk here " mlistsize newline)
+					(set movistart (- (tell port) 4))
+					(if (info "has-index")
+					    (begin
+					      # (print "Skipping movi chunk to find index" newline)
+					      (riff-skip-chunk port mlistsize))
+					    (while mlistsize
+					      (begin 
+						(set chunkinfo (riff-read-header port))
+						# (display chunkinfo mlistsize)
+						(set readsize (bit-and (bit-not 1) (+ (chunkinfo 1) 1)))
+						(set mlistsize (- mlistsize readsize 8))
+						(switch (chunkinfo 0)
+						  ("LIST" (begin
+							    (set listid (riff-read-list-id port))
+							    (switch listid
+							      ("rec " (begin
+									(set rlistsize (- (chunkinfo 1) 4))
+									# (print "Record list chunk here " rlistsize newline)
+									(while rlistsize
+									  (begin
+									    (set chunkinfo (riff-read-header port))
+									    # (display chunkinfo mlistsize)
+									    (set readsize (bit-and (bit-not 1) (+ (chunkinfo 1) 1)))
+									    (set rlistsize (- rlistsize readsize 8))
+									    (switch (chunkinfo 0)
+									      (else (begin
+										      #(print "Skipping unrecognized rec chunk " (tell port) chunkinfo newline)
+										      (riff-skip-chunk port readsize))))))))
+							      (else (begin
+								      #(print "skipping unknown movi LIST chunk " chunkinfo listid newline) 
+								      (riff-skip-chunk port (- readsize 4)))))))
+						  (else (begin
+							  #(print "Skipping unrecognized movi chunk " (tell port) chunkinfo newline)
+							  (riff-skip-chunk port readsize)))))))))
+			      (else (begin
+				      # (print "Skipping unrecognized LIST chunk " chunkinfo listid newline)
+				      (riff-skip-chunk port (- (chunkinfo 1) 4)))))))
+		  ("idx1" (begin
+			    # (print "Index chunk here " chunkinfo newline)
+			    (set readbuf (riff-read-chunk port (chunkinfo 1)))
+			    (set numrecords 0)
+			    (set index (map (proc (offset) (if (= '0' (readbuf [c-char 0 offset]))
+							       [ (eval (readbuf [c-char 2 offset]))
+								 (readbuf [c-int 0 (+ offset 4)])
+								 (readbuf [c-int 0 (+ offset 8)])
+								 (readbuf [c-int 0 (+ offset 12)]) ]
+							       [ 'r' (- (set numrecords (+ numrecords 1)) 1) ]))
+					    (make-series 0 (/ (chunkinfo 1) 16) 16)))
+
+			    (free readbuf)
+			    (if (info "interleaved")
+				(begin 
+				  (set dropped (- numrecords framecount))
+				  # (print dropped " frames were dropped!" newline)
+				  (set framecount (info "video-framecount" (+ framecount dropped)))
+				  (set curoffset 0)
+				  (set vidinfo (malloc (* framecount 8)))
+				  (set audinfo (malloc (* framecount 8)))
+				  (set lastvid [0 0]) 
+				  (set lastaud [0 0])
+				  (map (proc (item)
+					 (if item 
+					     (switch (item 0)
+					       ('r' (begin (set curoffset (* 8 (item 1)))
+							   (vidinfo [c-int 2 curoffset] lastvid)
+							   (audinfo [c-int 2 curoffset] lastaud)))
+					       (vidstream (vidinfo [c-int 2 curoffset] (set lastvid [(+ movistart 8 (item 2)) (item 3)])))
+					       (audstream (audinfo [c-int 2 curoffset] (set lastaud [(+ movistart 8 (item 2)) (item 3)]))))))
+				       index))
+				(begin 
+				  (set curoffset 0)
+				  (set vidinfo (malloc (* framecount 8)))
+				  (set audinfo Null)
+				  (map (proc (item)
+					 (if item 
+					     (switch (item 0)
+					       (vidstream (begin
+							    (vidinfo [c-int 2 curoffset] [(+ movistart 8 (item 2)) (item 3)])
+							    (set curoffset (+ curoffset 8)))))))
+				       index)))
+			    (info "video-infobuf" vidinfo)
+			    (info "audio-infobuf" audinfo)
+			    Null))
+		  (else (begin
+			  # (print "Skipping unrecognized chunk " chunkinfo newline)
+			  (riff-skip-chunk port (chunkinfo 1))))))
+	      # return result
+	      info))))))
+
+(set avi-read-frame
+  (proc (port infobuf framenum outbuf)
+    (local (offset size)
+      (begin
+	(set finfo (infobuf [c-int 2 (* framenum 8)]))
+	(seek port (finfo 0))
+	(read-raw port (finfo 1) outbuf)))))
+
+(set riff-read-list-id
+  (proc (port)
+    (if (= 4 (read-raw port 4 riff-junkbuf))
+	(riff-junkbuf [c-char 4]))))
+
+(set riff-read-header
+  (proc (port)
+    (if (= 8 (read-raw port 8 riff-junkbuf))
+	[ (riff-junkbuf [c-char 4 0]) (riff-junkbuf [c-int 0 4]) ])))
+
+(set riff-write-header
+  (proc (port id size)
+    (begin
+      (riff-junkbuf [c-char 4 0] id)
+      (riff-junkbuf [c-int 0 4] size)
+      (write-raw port 8 riff-junkbuf))))
+
+(set riff-write-list-id
+  (proc (port id)
+    (begin
+      (riff-junkbuf [c-char 4 0] id)
+      (write-raw port 4 riff-junkbuf))))
+
+(set riff-read-chunk
+  (proc (port size)
+    (local (readsize buf)
+      (begin
+	(set readsize (bit-and (bit-not 1) (+ size 1)))
+	(set buf (malloc readsize))
+	(read-raw port readsize buf)
+	buf))))
+
+(set riff-skip-chunk
+  (proc (port size)
+    (local (readsize seekpos)
+      (begin
+	(set readsize (bit-and (bit-not 1) (+ size 1)))
+	(set seekpos (+ (tell port) readsize))
+	(seek port seekpos)
+	seekpos))))
+
+
+############################################################################
+# Isis movie object
+
+(set isis-movie-frame-info-buf (malloc 8))
+(set isis-movie-foffset-loc isis-movie-frame-info-buf)
+(set isis-movie-fsize-loc (+ isis-movie-frame-info-buf 4))
+
+(set isis-movie-version 1)
+
+(set new-isis-movie
+  (proc (basename)
+    (local (info-file offset-filename data-filename keystructure
+                      framecount framesize offset-file data-file
+                      curframe foffset fsize val)
+      (begin
+	(if (!= '/' (tail basename)) (set basename (tail-insert '/' basename)))
+	(if (set info-file (open-input (append basename "info")))
+	    (begin
+	      (set keystructure (read-structure info-file (new-structure)))
+	      (close info-file)))
+	(if (not keystructure)
+	    (print "** Unable to open movie: " basename newline)
+	    (begin
+	      (set offset-filename (append basename (keystructure "offset-file")))
+	      (set data-filename (append basename (keystructure "data-file")))
+	      (set framecount (keystructure "framecount"))
+	      (set framesize (keystructure "framesize"))
+	      (keystructure "basename" basename)
+	      (set curframe 0)
+	      (set offset-file (open-input offset-filename))
+	      (set data-file (open-input data-filename))
+	      (proc args
+		(cond 
+		 ((= (length args) 0) basename)
+		 ((integer? (args 0))
+		  (begin 
+		    (set curframe (args 0))
+		    (seek offset-file (* curframe 8))
+		    (read-raw offset-file 8 isis-movie-frame-info-buf)
+		    (set foffset (isis-movie-foffset-loc uint32))
+		    (set fsize (isis-movie-fsize-loc uint32))
+		    (seek data-file foffset)
+		    (read-raw data-file fsize (args 1))
+		    fsize))
+		 ((= (args 0) "close") (begin (close offset-file) (close data-file)))
+		 ((= Null (set val (keystructure (args 0)))) (if (= (length args) 2) (args 1)))
+		 (True val)))))
+	))))
+
+(set isis-movie-duration
+  (proc (movie)
+    (/ (real (movie "framecount")) (movie "fps" 29.97))))
+
+(set isis-movie-audio-filename
+  (proc (movie)
+    (if (movie "audio-file") (append (movie "basename") (movie "audio-file")))))
+
+############################################################################
+# routine to create isis movie
+
+(set create-isis-movie
+  (proc (basename framesize fps coding achans arate abits)
+    (local (infofile videofile offsetfile audiofile 
+		     framecount audtot offsetbuf offset keystructure)
+      (if (not (create-directory basename))
+	  (print "** Unable to create movie: " basename newline)
+	  (begin
+	    (if (!= '/' (tail basename)) (set basename (tail-insert '/' basename)))
+	    
+	    (set infofile (open-output (append basename "info")))
+	    (set videofile (open-output (append basename "data")))
+	    (set offsetfile (open-output (append basename "offsets")))
+	    (if achans (set audiofile (open-output (append basename "audio"))))
+
+	    (set framecount 0)
+	    (set audtot 0)
+
+	    (set offsetbuf (malloc 8))
+	    (set offset 0)
+	    
+	    (proc msg
+	      (switch (msg 0)
+		("video" (begin   # size, buf
+			   (write-raw videofile (msg 1) (msg 2))
+			   (offsetbuf c-int [offset (msg 1)])
+			   (write-raw offsetfile 8 offsetbuf)
+			   (set offset (+ offset (msg 1)))
+			   (set framecount (+ framecount 1))))
+		("audio" (begin   # size, buf
+			   (write-raw audiofile (msg 1) (msg 2))
+			   (set audtot (+ audtot (msg 1)))))
+		(else (begin
+			(set keystructure (new-structure))
+			(keystructure "isis-movie-version" isis-movie-version)
+			(keystructure "data-file" "data")
+			(keystructure "offset-file" "offsets")
+			(keystructure "framecount" framecount)	    
+			(keystructure "framesize" framesize)
+			(keystructure "fps" fps)
+			(keystructure "coding" coding)
+			(if achans
+			    (begin
+			      (keystructure "audio-file" "audio")
+			      (keystructure "audio-format" "PCM")
+			      (keystructure "audio-channels" achans)
+			      (keystructure "audio-rate" arate)
+			      (keystructure "audio-bits" abits)
+			      (keystructure "audio-size" audtot)))
+			(write-structure infofile keystructure)
+			(map display (keystructure))
+			(close offsetfile)
+			(close videofile)
+			(close infofile)
+			(if achans (close audiofile))
+			(free offsetbuf))))))))))
+
+############################################################################
+# Isis to AVI movie conversion
+
+(set convert-isis-to-avi-movie
+  (proc (isisfilename avifilename)
+    (local (infofile avifile ms framesize numframes fps framenums
+		     offsetfile datafile offsetbuf vidoffsets rvidsizes vidsizes totvidbytes
+		     chans rate bits audiofile samplesize 
+		     curaud audsizes apos asize totaudbytes totaudsamps
+		     maxvidsize maxaudsize maxrecsize vidbuf audbuf indexsize indexbuf
+		     avihsize avihbuf vidstrhsize vidstrhbuf vidstrfsize vidstrfbuf
+		     audstrhsize audstrhbuf audstrfsize audstrfbuf 
+		     strlsize hdrlsize movisize totriffsize
+		     curoffset recsize ipos)
+      (cond
+       ((not (set infofile (open-input (append isisfilename "/info"))))
+	(print "Could not open Isis movie " isisfilename newline))
+       ((not (set avifile (open-output avifilename)))
+	(begin
+	  (close infofile)
+	  (print "Could not open output AVI file " avifilename newline)))
+       (True 
+	(begin
+	  # allocate riff junk buf
+	  (if (not (bound? riff-junkbuf)) (set riff-junkbuf (malloc 12)))
+	  
+	  # get Isis movie info
+	  (set ms (read-structure infofile (new-structure)))
+	  (set framesize (ms "framesize"))
+	  (set numframes (ms "framecount"])
+	  (set fps (ms "fps"))
+	  (if (or (not fps) (= fps 30.0)) (set fps 29.97))
+	  (set framenums (make-series 0 numframes 1))
+	  
+
+	  # get image offsets/sizes
+	  (set offsetfile (open-input (append isisfilename "/" (ms "offset-file"))))
+	  (set datafile (open-input (append isisfilename "/" (ms "data-file"))))
+	  (set offsetbuf (malloc (* 8 numframes)))
+	  (read-raw offsetfile (* 8 numframes) offsetbuf)
+	  (set vidoffsets (map (proc (fnum) (offsetbuf [c-int 0 (* 8 fnum)])) framenums))
+	  (set rvidsizes (map (proc (fnum) (offsetbuf [c-int 0 (+ 4 (* 8 fnum))])) framenums))
+	  (set vidsizes (map (proc (size) (bit-and (bit-not 1) (+ size 1))) rvidsizes))
+	  (set totvidbytes (apply + vidsizes))
+
+	  # get audio offsets/sizes
+	  (if (set doaudio (boolean (ms "audio-channels")))
+	      (begin
+		(set chans (ms "audio-channels"))
+		(set rate (ms "audio-rate"))
+		(set bits (ms "audio-bits"))
+		(set audiofile (open-input (append isisfilename "/" (ms "audio-file"))))
+		(set samplesize (* chans (/ bits 8)))
+		(set curaud 0)
+		(set audsizes 
+		  (map (proc (fnum) 
+			 (begin
+			   (set apos (* samplesize (integer (* (/ (real (+ fnum 1)) fps) rate))))
+			   (set asize (- apos curaud))
+			   (set curaud apos)
+			   asize))
+		       framenums))
+		(set totaudbytes (apply + audsizes))
+		(set totaudsamps (/ totaudbytes samplesize))
+		))
+		
+	  # buf sizes
+	  (set maxvidsize (apply max vidsizes))
+	  (set maxaudsize (if doaudio (apply max audsizes) 0))
+	  (set maxrecsize (+ maxvidsize maxaudsize))
+	  (set vidbuf (malloc maxvidsize))
+	  (if doaudio (set audbuf (malloc maxaudsize)))
+	  (set indexsize (* numframes (if doaudio 3 2) 16))
+	  (set indexbuf (malloc indexsize))
+	  
+	  # AVI header struct
+	  (set avihsize (* 14 4))
+	  (set avihbuf (malloc avihsize))
+	  (set-memory avihsize 0 avihbuf)
+	  (avihbuf c-int [ (integer (* (/ 1.0 fps) 1000000))
+			   0 0 0b100010000 numframes 0 2 
+			   maxrecsize (framesize 0) (framesize 1) 0])
+	       
+	  # vid stream header struct
+	  (set vidstrhsize (* 14 4))
+	  (set vidstrhbuf (malloc vidstrhsize))
+	  (set-memory vidstrhsize 0 vidstrhbuf)
+	  (vidstrhbuf [c-char 4 0] "vids")
+	  (vidstrhbuf [c-int 0 4] 0)
+	  (vidstrhbuf [c-int 0 8] [ 0 0 0 1000000 (integer (* fps 1000000)) 0 numframes maxvidsize 0 0 0 0])
+	       
+	  # vid stream format struct
+	  (set vidstrfsize (* 10 4))
+	  (set vidstrfbuf (malloc vidstrfsize))
+	  (set-memory vidstrfsize 0 vidstrfbuf)
+	  (vidstrfbuf [c-int 0 0] [vidstrfsize (framesize 0) (framesize 1)])
+	  (vidstrfbuf [c-short 0 12] [1 24])
+	  (vidstrfbuf [c-char 4 16] "jpeg")
+	  (vidstrfbuf [c-int 0 20] [maxvidsize 0 0 0 0])
+
+	  # aud stream header struct
+	  (if doaudio
+	      (begin
+		(set audstrhsize (* 14 4))
+		(set audstrhbuf (malloc audstrhsize))
+		(set-memory audstrhsize 0 audstrhbuf)
+		(audstrhbuf [c-char 4 0] "auds")
+		(audstrhbuf [c-int 0 4] 0)
+		(audstrhbuf [c-int 0 8] [ 0 0 0 1 rate 0 totaudsamps 0 0 samplesize 0 0])
+		))
+	       
+	  # aud stream format struct
+	  (if doaudio
+	      (begin
+		(set audstrfsize 16)
+		(set audstrfbuf (malloc audstrfsize))
+		(set-memory audstrfsize 0 audstrfbuf)
+		(audstrfbuf [c-short 0 0] 1)
+		(audstrfbuf [c-short 0 2] chans)
+		(audstrfbuf [c-int 0 4] rate)
+		(audstrfbuf [c-int 0 8] (* rate chans (/ bits 8)))
+		(audstrfbuf [c-short 0 12] samplesize)
+		(audstrfbuf [c-short 0 14] bits)
+		))
+	       
+	  # calculate some sizes
+	  (set vidstrlsize (+ 4 8 vidstrhsize 8 vidstrfsize))
+	  (set audstrlsize (if doaudio (+ 4 8 audstrhsize 8 audstrfsize) 0))
+	  (set hdrlsize (+ 4 8 avihsize 8 vidstrlsize (if doaudio (+ 8 audstrlsize) 0)))
+	  (set movisize (+ 4 (* numframes (+ 8 4 8 8)) 
+			   (apply + vidsizes) 
+			   (if doaudio (apply + audsizes) 0)))
+	  (set totriffsize (+ 4 8 hdrlsize 8 movisize 8 indexsize))
+	       
+	  # write out the file
+	  (riff-write-header avifile "RIFF" totriffsize)
+	  (riff-write-list-id avifile "AVI ")
+
+	  # write hdrl list chunk
+	  (riff-write-header avifile "LIST" hdrlsize)
+	  (riff-write-list-id avifile "hdrl")
+
+	  (riff-write-header avifile "avih" avihsize)
+	  (write-raw avifile avihsize avihbuf)
+
+	  (riff-write-header avifile "LIST" vidstrlsize)
+	  (riff-write-list-id avifile "strl")
+	  (riff-write-header avifile "strh" vidstrhsize)
+	  (write-raw avifile vidstrhsize vidstrhbuf)
+	  (riff-write-header avifile "strf" vidstrfsize)
+	  (write-raw avifile vidstrfsize vidstrfbuf)
+
+	  (if doaudio
+	      (begin
+		(riff-write-header avifile "LIST" audstrlsize)
+		(riff-write-list-id avifile "strl")
+		(riff-write-header avifile "strh" audstrhsize)
+		(write-raw avifile audstrhsize audstrhbuf)
+		(riff-write-header avifile "strf" audstrfsize)
+		(write-raw avifile audstrfsize audstrfbuf)))
+
+	  # write movi list chunk
+	  (riff-write-header avifile "LIST" movisize)
+	  (riff-write-list-id avifile "movi")
+	  
+	  (set curoffset 4)
+	  (map (proc (fnum)
+		 (begin
+		   (print return "Processing frame " (+ fnum 1) "of " numframes)
+		   (set recsize (+ 4 8 (vidsizes fnum) (if doaudio (+ 8 (audsizes fnum)) 0)))
+		   (riff-write-header avifile "LIST" recsize)
+		   (riff-write-list-id avifile "rec ")
+		   # write video
+		   (riff-write-header avifile "00dc" (rvidsizes fnum))
+		   (seek datafile (vidoffsets fnum))
+		   (read-raw datafile (vidsizes fnum) vidbuf)
+		   (if (!= (vidsizes fnum) (write-raw avifile (vidsizes fnum) vidbuf))
+		       (print "*** Write error.  Out of disk space?" newline))
+		   # write audio
+		   (if doaudio
+		       (begin
+			 (riff-write-header avifile "01wb" (audsizes fnum))
+			 (read-raw audiofile (audsizes fnum) audbuf)
+			 (if (!= (audsizes fnum) (write-raw avifile (audsizes fnum) audbuf))
+			     (print "*** Write error.  Out of disk space?" newline))))
+		   # record index info
+		   (set ipos (* fnum (if doaudio 48 32)))
+		   (indexbuf [c-char 4 ipos] "rec ")
+		   (indexbuf [c-int 0 (+ ipos 4)] [1 curoffset recsize])
+		   (indexbuf [c-char 4 (+ ipos 16)] "00dc")
+		   (indexbuf [c-int 0 (+ ipos 20)] [16 (+ curoffset 12) (rvidsizes fnum)])
+		   (if doaudio 
+		       (begin
+			 (indexbuf [c-char 4 (+ ipos 32)] "01wb")
+			 (indexbuf [c-int 0 (+ ipos 36)] [0 (+ curoffset 12 8 (vidsizes fnum)) (audsizes fnum)])))
+		   # increment position
+		   (set curoffset (+ curoffset 8 recsize))
+		   ))
+	       framenums)
+	       
+	  # write index chunk
+	  (print newline "Writing index..." newline)
+	  (riff-write-header avifile "idx1" indexsize)
+	  (if (!= indexsize (write-raw avifile indexsize indexbuf))
+	      (print "*** Write error.  Out of disk space?" newline))
+	       
+	  (close infofile)
+	  (close offsetfile)
+	  (close datafile)
+	  (if doaudio (close audiofile))
+	  (close avifile)
+	  (free vidbuf) 
+	  (if doaudio (free audbuf))
+	  (free indexbuf)
+	  (free offsetbuf)
+	  (free avihbuf)
+	  (free vidstrhbuf)
+	  (free vidstrfbuf)
+	  (if doaudio (free audstrhbuf))
+	  (if doaudio (free audstrfbuf))
+
+	  (print "Done." newline)
+	  ))))))
+	       
+############################################################################
+# AVI to isis movie conversion
+
+(set convert-avi-to-isis-movie
+  (proc (avifilename isisfilename)
+    (local (avifile aviinfo isisfile framesize doaudio buf 
+		    framecount vidinfo audinfo curframe numbytes)
+      (if (not (set avifile (open-input avifilename)))
+	  (print "Could not open avi movie file " avifilename newline)
+	  (begin 
+	    (set aviinfo (avi-read-info avifile))
+	    (set isisfile (create-isis-movie isisfilename
+					     (set framesize (aviinfo "video-framesize"))
+					     (aviinfo "video-rate")
+					     (switch (aviinfo "video-format")
+					       ("MJPG" "jpeg")
+					       ("JPEG" "jpeg")
+					       ("jpeg" "jpeg")
+					       (else "unknown"))
+					     (if (set doaudio (aviinfo "has-audio"))
+						 (aviinfo "audio-channels"))
+					     (aviinfo "audio-rate")
+					     (aviinfo "audio-bits")))
+	    (if (not isisfile) 
+		(begin
+		  (print "Could not open isis movie file " isisfilename newline)
+		  (close aviinfo))
+		(begin
+		  (map display (aviinfo))
+		  (set buf (malloc (* (framesize 0) (framesize 1) 4)))
+		  (set framecount (aviinfo "video-framecount"))
+		  (set vidinfo (aviinfo "video-infobuf"))
+		  (set audinfo (aviinfo "audio-infobuf"))
+		  (set curframe 0)
+		  (while (< curframe framecount)
+		    (begin 
+		      (set numbytes (avi-read-frame avifile vidinfo curframe buf))
+		      (print return "Processing video frame " (+ curframe 1) "of " framecount numbytes)
+		      (isisfile "video" numbytes buf)
+		      (set curframe (+ curframe 1))))
+		  (print newline)
+		  (set curframe 0)
+		  (if doaudio
+		      (while (< curframe framecount)
+			(begin 
+			  (set numbytes (avi-read-frame avifile audinfo curframe buf))
+			  (print return "Processing audio frame " (+ curframe 1) "of " framecount numbytes)
+			  (isisfile "audio" numbytes buf)
+			  (set curframe (+ curframe 1)))))
+		  (print newline)
+		  (free buf)
+		  (free vidinfo)
+		  (if audinfo (free audinfo))
+		  (close avifile)
+		  (isisfile "close"))))))))
+
+
+############################################################################
+# JPEG sequence to Isis movie conversion
+
+(set convert-jpeg-sequence-to-isis-movie
+  (proc (basename isisfilename aname achans arate abits)
+    (local (numzeros jpegfile image framesize isisfile bufsize buf filename framecount numstr numbytes audiofile)
+      (begin
+	(set numzeros 0)
+	(while (and (< numzeros 10)
+		    (not (set jpegfile (open-input (append basename (make-list numzeros '0') "1.jpg")))))
+	  (set numzeros (+ numzeros 1)))
+	(if (not jpegfile)
+	    (print "Could not open jpeg sequence with basename " basename newline)
+	    (begin 
+	      (set image (read-jpeg jpegfile))
+	      (close jpegfile)
+	      (set framesize (image buf-dims))
+	      (free-image image)
+	      (print "Converting sequence of JPEG images to Isis movie..." newline)
+	      (print "Detected file names preceded by " numzeros "zeros..." newline)
+	      (print "Frame size is " framesize newline)
+	      (set isisfile (create-isis-movie isisfilename framesize 29.97 "jpeg"
+					       (if aname achans 0) arate abits))
+	      (if (not isisfile) 
+		  (print "Could not open isis movie file " isisfilename newline)
+		  (begin
+		    (set bufsize (* (framesize 0) (framesize 1) 4))
+		    (set buf (malloc bufsize))
+		    (set framecount 0)
+		    (while (begin
+			     (set numstr (uneval (+ framecount 1)))
+			     (set filename (append basename 
+						   (make-list (max 0 (- numzeros (length numstr) -1)) '0') 
+						   numstr ".jpg"))
+			     (set jpegfile (open-input filename)))
+		      (begin 
+			(set framecount (+ framecount 1))
+			(set numbytes (read-raw jpegfile bufsize buf))
+			(close jpegfile)
+			(print return "Processing video frame " filename)
+			(isisfile "video" numbytes buf)))
+		    (print newline)
+		    (if aname 
+			(if (not (set audiofile (open-input aname)))
+			    (print "Could not open audio file " aname newline)
+			    (begin
+			      (print "Processing audio" newline)
+			      (while (set numbytes (read-raw audiofile bufsize buf))
+				(isisfile "audio" numbytes buf)))))
+		    (print newline)
+		    (free buf)
+		    (isisfile "close")))))))))
+
+
+############################################################################
+# Function to glue isis movies together
+
+(set glue-movies
+  (proc (infilename-list outfilename)
+    (local (index-list movie-list framesize fps coding achans arate abits outmovie
+		       framecount-list duration-list audiofile-list bytespersamp
+		       videotime audiotime vidbuf audbufsize audbuf curframe jpegsize
+		       destime audiobytes totbytes actualtime readsize)
+      (if (set index-list (search-all Null (set movie-list (map (proc (n) (new-isis-movie n)) infilename-list))))
+	  (begin
+	    (print "The following movies could not be opened: " newline)
+	    (map (proc (x) (print (infilename-list x) newline)) index-list))
+	  (begin
+	    (set framesize ((movie-list 0) "framesize"))
+	    (set fps ((movie-list 0) "fps" 29.97))
+	    (set coding ((movie-list 0) "coding" "jpeg"))
+	    (set achans ((movie-list 0) "audio-channels"))
+	    (set arate ((movie-list 0) "audio-rate"))
+	    (set abits ((movie-list 0) "audio-bits"))
+	    (if (not (set outmovie (create-isis-movie outfilename framesize fps coding achans arate abits)))
+		(map (proc (movie) (movie "close")) movie-list)
+		(begin
+		  (set framecount-list (map (proc (movie) (movie "framecount")) movie-list))
+		  (set duration-list (map (proc (framecount) (/ (real framecount) fps)) framecount-list))
+		  (set audiofile-list (map (proc (name movie) (open-input (append name "/" (movie "audio-file"))))
+					   infilename-list movie-list))
+		  (set abps (* (/ abits 8) achans))
+		  (set videotime 0.0)
+		  (set audiotime 0.0)
+		  (set vidbuf (allocate-memory (* (framesize 0) (framesize 1) 3)))
+		  (set audbufsize (* arate abps))
+		  (set audbuf (allocate-memory audbufsize))
+		  (map (proc (name movie framecount duration audiofile)
+			 (begin
+			   (set curframe 0)
+			   (print newline)
+			   (while (< curframe framecount)
+			     (begin
+			       (print return "Processing " name " video frame " curframe "of " framecount "...")
+			       (set jpegsize (movie curframe vidbuf))
+			       (outmovie "video" jpegsize vidbuf)
+			       (set curframe (+ curframe 1))))
+			   (set videotime (+ videotime duration))
+			   (set destime (- videotime audiotime))
+			   (set audiobytes (+ abps (audio-calc-size destime achans arate abits)))
+			   (set totbytes audiobytes)
+			   (set actualtime (/ (real audiobytes) abps arate))
+			   (set audiotime (+ audiotime actualtime))
+			   (print newline "Processing audio..." destime actualtime audiotime newline)
+			   (while (> audiobytes 0)
+			     (begin
+			       (set readsize (min audiobytes audbufsize))
+			       (read-raw audiofile readsize audbuf)
+			       (outmovie "audio" readsize audbuf)
+			       (set audiobytes (- audiobytes readsize))))))
+		       infilename-list movie-list framecount-list duration-list audiofile-list)
+		  (free vidbuf)
+		  (free audbuf)
+		  (map close audiofile-list)
+		  (map (proc (movie) (movie "close")) movie-list)
+		  (print newline)
+		  (outmovie "close")	    
+		  (print newline "Done!" newline))))))))
+
+############################################################################
+# Play movie in OpenGL
+
+(set play-movie-opengl-alsa
+  (proc args
+    (local (filename fullscreen movie numframes fps runtime framesize
+		     rootwinsize rootwinpos rootwin mobj mtrans reshape keyboard scalefactor
+		     going audioname bits unsigned bigendian rate chans audiofile
+		     bufsamps bufbytes alsa alsafd buf timer fpstimer framecount going
+		     inbytes movtime curframe lastframe)
+      (begin
+	
+	(set filename (if args (args 0) "/usr/local/isis/media/repo"))
+	(set fullscreen (if (> (length args) 1) (boolean (args 1)) False))
+	
+	# open movie
+
+	(if (set movie (new-isis-movie filename))
+	    (begin
+	      (set numframes (movie "framecount"))
+	      (set fps (movie "fps" 29.97))
+	      (set runtime (/ (real numframes) fps))
+	      (set framesize (movie "framesize"))
+	      
+	      # OpenGL setup
+	      
+	      (load "macaroni.isis")
+	      (macaroni-initialize filename)
+	      (set rootwinsize [640 (integer (* 640.0 (/ (real (framesize 1)) (real (framesize 0)))))])
+	      (set rootwinpos [100 100])
+	      (set rootwin (macaroni-create-window (if fullscreen "notitle" filename)
+						   rootwinsize rootwinpos True))
+	      (if fullscreen (glutFullScreen))
+	      
+	      (set mobj (mac-new-isis-movie [mac-movie movie]
+					    [mac-interp True]))
+	      (set mtrans (mac-new-transform [mac-object mobj]))
+	      
+	      (set reshape
+		(proc (w h)
+		  (begin
+		    (glViewport 0 0 w h)
+		    (glMatrixMode GL_PROJECTION)
+		    (glLoadIdentity)
+		    (glOrtho 0.0 (real w) 0.0 (real h) -1.0 1.0)
+		    (glMatrixMode GL_MODELVIEW)
+		    (set rootwinsize [w h])
+		    (set scalefactor (/ (real (rootwinsize 0)) (* 1.0 (framesize 0))))
+		    (mtrans [mac-position (/ (map real rootwinsize) [2.0 2.0])]
+			    [mac-scale scalefactor]))))
+	      
+	      (set keyboard
+		(proc (key x y)
+		  (switch key
+		    (27 (set going False)))))
+	      
+	      (update-glut-callback-slot glut_reshape_slot reshape)
+	      (glutReshapeFunc glut_reshape)
+	      (update-glut-callback-slot glut_keyboard_slot keyboard)
+	      (glutKeyboardFunc glut_keyboard)
+
+	      # audio setup
+
+	      (set audioname (movie "audio-file"))
+	      (set bits (movie "audio-bits"))
+	      (set unsigned (= bits 8))
+	      (set bigendian False)
+	      (set rate (movie "audio-rate"))
+	      (set chans (movie "audio-channels"))
+	      
+	      (set audiofile (if audioname (open-input (append filename "/" audioname))))
+	      
+	      (if audiofile
+		  (begin
+		    (set alsa (alsa-open-output))
+		    (if (not alsa) (begin (print "** Could not open ALSA audio." newline) (exit)))
+		    (set alsafd (unix-new-port-FD "ALSA" (alsa-filedes alsa) True True))		    
+		    (set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans rate))
+		    (if (not bufsamps) (begin (print "** Audio format rejected." newline) (exit)))
+		    (set bufbytes (* chans (/ bits 8) bufsamps))
+		    (set buf (malloc bufbytes))
+		    (alsa-prepare alsa)))
+	      
+	      # main loop
+	      
+	      (set timer (new-timer))
+	      (set fpstimer (new-timer))
+	      (set framecount 0)
+	      (set going True)
+	      (set lastframe -1)
+	      
+	      (macaroni-start
+	       (proc ()
+		 (begin
+		   
+		   # process audio
+		   
+		   (while (and audiofile
+			       (write-ready alsafd)
+			       (set inbytes (read-raw audiofile bufbytes buf)))
+		     (begin
+		       (if (!= inbytes bufbytes) 
+			   (set-memory (- bufbytes inbytes) (if (= bits 8) 128 0) (+ buf inbytes)))
+		       (if (not (alsa-state alsa)) (alsa-prepare alsa))
+		       (alsa-write alsa bufsamps buf)))
+		   
+		   # process video
+		   
+		   (set movtime (timer))
+		   (set curframe (integer (* fps movtime)))
+		   (if (<= curframe lastframe) 
+		       (begin
+			 (sleep (- (/ (real (+ lastframe 1)) fps) movtime))
+			 (set curframe (+ lastframe 1))))
+		   (mobj [mac-frame curframe])
+		   (macaroni-update-window rootwin mtrans True)
+		   (set lastframe curframe)
+		   
+		   # fps display 
+		   
+		   (set framecount (+ framecount 1))
+		   (if (= framecount 1000)
+		       (begin
+			 (print-frames-per-second fpstimer framecount)
+			 (set framecount 0)
+			 (fpstimer 'r')))
+		   
+		   # check for end or quit condition
+		   
+		   (if (or (not going) (> movtime runtime))
+		       (begin 
+			 (if audiofile 
+			     (begin
+			       (alsa-close alsa)
+			       (close audiofile)
+			       (free buf)))
+			 (movie "close")
+			 (exit)))
+		   
+		   )))
+	      ))))))
+
+(set play-movie play-movie-opengl-alsa)
+
+############################################################################
+# Record movie on Linux with V4L2 and ALSA
+
+(set record-movie-v4l2-alsa
+  (proc args
+    (local (filename framesize devname inputnum standard quality achans arate abits
+		     frequency brightness contrast duration delay subrate playfps timer muteinfo
+		     alsa vport vc movie format pixelformat jpegbufsize jpegbuf bufaddrs rgbimages
+		     fps fper fgrace alsafd bufsamps bufbytes insamps audbuf finfo curbuf fieldmode
+		     ftime lastftime timediff jpegsize fdropped curframe outframe totjpeg aimage aclip)
+      (begin
+	
+	# set defaults
+	(set filename "movie")
+	(set framesize [320 240])
+	(set devname "/dev/video0")
+	(set inputnum 1)
+	(set standard "ntsc")
+	(set quality 95)
+	(set achans 2)
+	(set arate 22050)
+	(set abits 16)
+	(set duration Null)
+	(set delay 0.0)
+	(set subrate 1)
+
+	(set frequency Null)
+	(set brightness 50)
+	(set contrast 50)
+
+	# read arguments
+	(map (proc (arg)
+	       (switch (arg 0)
+		 ("filename" (set filename (arg 1)))
+		 ("size" (set framesize (arg 1)))
+		 ("device" (set devname (arg 1)))
+		 ("input" (set inputnum (arg 1)))
+		 ("standard" (set standard (arg 1)))
+		 ("quality" (set quality (arg 1)))
+		 ("achans" (set achans (arg 1)))
+		 ("arate" (set arate (arg 1)))
+		 ("abits" (set abits (arg 1)))
+		 ("frequency" (set frequency (arg 1)))
+		 ("brightness" (set brightness (arg 1)))
+		 ("contrast" (set contrast (arg 1)))
+		 ("duration" (set duration (arg 1)))
+		 ("delay" (set delay (arg 1)))
+		 ("subrate" (set subrate (arg 1)))
+		 (else (print "* Unrecognized argument: " arg newline))))
+	     args)
+	
+	(set playfps (/ (if (= standard "ntsc") 29.97 24.994) subrate))
+	
+	(cond 
+	 ((not (set alsa (if achans (alsa-open-input) True)))
+	  (print "** Unable to open ALSA audio input" newline))
+	 ((not (set vport (open-update devname)))
+	  (print "** Unable to open video capture " devname newline))
+	 ((not (set vc (vcap-open vport)))
+	  (print "** Unable to initialize video capture" newline))
+	 ((not (set movie (create-isis-movie filename framesize playfps "jpeg" achans arate abits)))
+	  (print "** Unable to open movie file " filename newline))
+	 (True 
+	  (begin
+
+	    # print some info
+	    (print "Recording from " devname "  input " inputnum " standard " standard newline)
+	    (if frequency (print "Frequency " frequency "brightness " brightness "contrast " contrast newline))
+	    (print "Video size " framesize " rate " playfps " JPEG quality " quality newline)
+	    (if achans 
+		(print achans "channel  " arate "Hz  " abits "bit audio" newline)
+		(print "No audio" newline))
+
+	    # video setup
+	    (vcap-input vc inputnum)
+	    (if (not (vcap-standard vc standard))
+	    	(begin
+	    	  (print "Supported standards for input " inputnum ":" newline)
+		  (map (proc (x) (print x " ")) (vcap-standards vc inputnum))
+		  (print newline)))
+	    (if frequency
+		(begin
+		  (set muteinfo (vcap-find-control vc "Mute"))
+		  (vcap-control vc (muteinfo 0) 0)
+		  (vcap-tune vc inputnum (integer (/ (* frequency 1000.0) 62.5)))))
+	    (set fieldmode (if (or (and (= standard "ntsc") (<= (framesize 1) 240))
+				   (and (!= standard "ntsc") (<= (framesize 1) 288)))
+			       vcap-field-top
+			       vcap-field-interlaced))
+	    (set format (vcap-format vc framesize vcap-bgr32 fieldmode))
+	    (set framesize (format 0))
+	    (set pixelformat (format 1))
+	    (set jpegbufsize (* (framesize 0) (framesize 1) 3))
+	    (set jpegbuf (malloc jpegbufsize))
+	    (set fps (if (= standard "ntsc") 29.97 24.994))
+	    (set fper (/ 1.0 fps))
+	    (set fgrace (integer (* 1000000.0 1.333 fper)))
+	    (set curframe 0)
+	    (set outframe 0)
+	    (set totjpeg 0)
+	  
+	    # audio setup
+	    (if achans
+		(begin
+		  (set alsafd (unix-new-port-FD "ALSA" (alsa-filedes alsa) True True))
+		  (set bufsamps (alsa-setup alsa abits (= abits 8) False arate achans arate))
+		  (if (not bufsamps) (begin (print "** Audio format rejected" newline) (exit)))
+		  (set bufbytes (* bufsamps achans (/ abits 8)))
+		  (set audbuf (malloc bufbytes))
+		  (set aimage (new-image (if (= abits 8) c-byte c-short) 1 
+					 [bufsamps 1] [1 bufsamps] [audbuf]))
+		  (set aclip (if (= abits 8) 250 30000))))
+	    
+	    # delay start if necessary
+	    (if delay 
+		(begin
+		  (set delay (real delay))
+		  (print "Delaying start of capture for " delay "seconds" newline)
+		  (sleep delay)))
+	    
+	    # start capture
+	    (set timer (new-timer))
+	    (if achans (alsa-prepare alsa))
+	    (if (not duration)
+		(begin
+		  (print "Press enter to start recording...")
+		  (read-string)
+		  (print "Now recording.  Press enter again to stop." newline))
+		(begin
+		  (set duration (real duration))
+		  (print "Recording for " duration "seconds..." newline)))
+	    (timer 'r')
+	    (set bufaddrs (vcap-start vc))
+	    (set rgbimages (map (proc (addr) (vcap-image vc framesize pixelformat addr)) bufaddrs))
+	    (if achans (alsa-start alsa))
+	  
+	    # main loop
+	    (while (if duration (<= (timer) duration) (not (pending)))
+	      (begin
+		# wait for audio or video
+		(if achans 
+		    (multipending [alsafd vport] 1000000)
+		    (pending vport 1000000))
+	      
+		# check audio continuity
+		(if (and achans (not (alsa-state alsa)))
+		    (begin
+		      (print "Lost audio continuity.  You should re-record." newline)
+		      (alsa-prepare alsa)
+		      (alsa-start alsa)))
+	      
+		# read audio
+		(while (and achans (pending alsafd) (alsa-state alsa))
+		  (begin
+		    (set insamps (alsa-read alsa bufsamps audbuf))
+		    (if (>= ((image-stats-max aimage) 0) aclip)
+			(print "Audio is too hot near frame " outframe newline))
+		    (movie "audio" bufbytes audbuf)))
+		
+		# read video
+		(while (and (pending vport) (if duration (<= (timer) duration) (not (pending))))
+		  (begin
+		    (set finfo (vcap-read vc))
+		    (set curbuf (finfo 0)) # index of current frame
+		    (set ftime [ (finfo 4) (finfo 5) ])
+		    (if (and (!= Null lastftime) 
+			     (< fgrace (set timediff (+ (* (- (ftime 0) (lastftime 0)) 1000000)
+							(- (ftime 1) (lastftime 1))))))
+			(begin 
+			  # timediff is microseconds since last frame
+			  (set fdropped 
+			    (integer (/ (real (- timediff (integer (* fper 500000.0))))
+					(* fper 1000000.0))))
+			  (while (> fdropped 0)
+			    (begin (if (= 0 (mod curframe subrate))
+				       (begin
+					 (movie "video" jpegsize jpegbuf)
+					 (set totjpeg (+ totjpeg jpegsize))
+					 (print "Frame " outframe "dropped" newline)
+					 (set outframe (+ outframe 1))))
+				   (set curframe (+ curframe 1))
+				   (set fdropped (- fdropped 1))))))
+		    (set lastftime ftime)
+		    (if (= 0 (mod curframe subrate))
+			(begin
+			  (set jpegsize (encode-jpeg (rgbimages curbuf) jpegbuf jpegbufsize quality))
+			  (vcap-queue vc)
+			  (movie "video" jpegsize jpegbuf)
+			  (set totjpeg (+ totjpeg jpegsize))
+			  (set outframe (+ outframe 1)))
+			(vcap-queue vc))
+		    (set curframe (+ curframe 1))))
+		
+		))
+	    
+	    # read rest of audio
+	    (while (and achans (pending alsafd) (alsa-state alsa))
+	      (begin
+		(set insamps (alsa-read alsa bufsamps audbuf))
+		(movie "audio" bufbytes audbuf)))
+	    
+	    # close up
+	    (if achans (alsa-close alsa))
+	    (vcap-stop vc)
+	    (vcap-close vc)
+	    (close vport)
+	    (if (not duration) (read-string))
+	    (movie ["close"])
+	    (print "Total number of video frames: " outframe newline)
+	    (if outframe (print "Average JPEG size: " (/ totjpeg outframe) newline))
+	    (print "Done." newline)
+	  
+	    )))))))
+
+(set record-movie record-movie-v4l2-alsa)
+
+############################################################################
+# Browse movie with OpenGL
+
+(set browse-movie-opengl-alsa
+  (proc args
+    (local (filename fullscreen
+		     movie numframes finalframe fps framesize trimstart trimend coding
+		     rootwinsize rootwinpos rootwin mobj mtrans reshape scalefactor keyboard
+		     audioname bits unsigned bigendian rate chans audiofile
+		     bufsamps bufbytes alsa alsafd buf usage docommand lastcommand
+		     trimname outbuf outsize outname outfile 
+		     timer curframe lastframe entryframe playing inbytes audioskew)
+      (begin
+	
+	(set filename (if args (args 0) "/usr/local/isis/media/repo"))
+	(set fullscreen (if (> (length args) 1) (boolean (args 1)) False))
+	
+	# open movie
+
+	(if (set movie (new-isis-movie filename))
+	    (begin
+	      (set numframes (movie "framecount"))
+	      (set finalframe (- numframes 1))
+	      (set fps (movie "fps" 29.97))
+	      (if (= fps 30.0) (set fps 29.97))
+	      (set framesize (movie "framesize"))
+	      (set trimstart 0)
+	      (set trimend finalframe)
+	      (set coding (movie "coding" "jpeg"))
+	      (set audioskew 0.0)
+
+	      # OpenGL setup
+	      
+	      (load "macaroni.isis")
+	      (macaroni-initialize filename)
+	      (set rootwinsize [640 (integer (* 640.0 (/ (real (framesize 1)) (real (framesize 0)))))])
+	      (set rootwinpos [100 100])
+	      (set rootwin (macaroni-create-window (if fullscreen "notitle" filename)
+						   rootwinsize rootwinpos True))
+	      (if fullscreen (glutFullScreen))
+	      
+	      (set mobj (mac-new-isis-movie [mac-movie movie]
+					    [mac-interp True]))
+	      (set mtrans (mac-new-transform [mac-object mobj]))
+	      
+	      (set reshape
+		(proc (w h)
+		  (begin
+		    (glViewport 0 0 w h)
+		    (glMatrixMode GL_PROJECTION)
+		    (glLoadIdentity)
+		    (glOrtho 0.0 (real w) 0.0 (real h) -1.0 1.0)
+		    (glMatrixMode GL_MODELVIEW)
+		    (set rootwinsize [w h])
+		    (set scalefactor (/ (real (rootwinsize 0)) 
+					(* 1.0 (framesize 0))))
+		    (mtrans [mac-position (/ (map real rootwinsize) [2.0 2.0])]
+			    [mac-scale scalefactor]))))
+	      
+	      (set keyboard
+		(proc (key x y)
+		  (switch key
+		    (27 (docommand "q"))
+		    (13 (docommand ""))
+		    (else (docommand [ (character key) ])))))
+	      
+	      (update-glut-callback-slot glut_reshape_slot reshape)
+	      (glutReshapeFunc glut_reshape)
+	      (update-glut-callback-slot glut_keyboard_slot keyboard)
+	      (glutKeyboardFunc glut_keyboard)
+
+	      # audio setup
+
+	      (set audioname (movie "audio-file"))
+	      (set bits (movie "audio-bits"))
+	      (set unsigned False)
+	      (set bigendian False)
+	      (set rate (movie "audio-rate"))
+	      (set chans (movie "audio-channels"))
+
+	      (set audiofile (if audioname (open-input (append filename "/" audioname))))
+
+	      (if audiofile
+		  (begin
+		    (set alsa (alsa-open-output))
+		    (if (not alsa) (begin (print "** Could not open ALSA audio." newline) (exit)))
+		    (set alsafd (unix-new-port-FD "ALSA" (alsa-filedes alsa) True True))		    
+		    (set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans rate))
+		    (if (not bufsamps) (begin (print "** Audio format rejected." newline) (exit)))
+		    (set bufbytes (* chans (/ bits 8) bufsamps))
+		    (set buf (malloc bufbytes))
+		    (alsa-prepare alsa)))
+	      
+	      # usage
+
+	      (set usage
+		(proc ()
+		  (begin
+		    (print newline)
+		    (print "Isis - Browse Movie Help" newline)
+		    (print "Enter commands in the movie window or your terminal." newline)
+		    (print "Commands given in terminal must be followed by a RETURN" newline)
+		    (print "-------------------------------------------------------" newline)
+		    (print "p      : start/pause playback with audio" newline)
+		    (print "f      : go forward one frame" newline)
+		    (print "b      : go back one frame" newline)
+		    (print "F      : go forward 10 frames" newline)
+		    (print "B      : go back 10 frames" newline)
+		    (print "<num>  : go to frame number" newline)
+		    (print "RETURN : repeat previous command" newline)
+		    (print "s      : mark start frame for trim" newline)
+		    (print "e      : mark end frame for trim" newline)
+		    (print "t      : trim movie between marked start and end" newline)
+		    (print "i      : print information about a frame" newline)
+		    (print "j      : output frame to a JPEG file" newline)
+		    (print "?      : this help screen" newline)
+		    (print "q      : quit" newline)
+		    (print newline))))
+
+	      (usage)
+	      
+	      # keyboard commands
+	      
+	      (set docommand
+		(proc (command)
+		  (begin 
+		    (if (not command) (set command lastcommand))
+		    (set lastcommand command)
+		    (switch (command 0)
+		      ('?' (usage))
+		      ('f' (set curframe (+ curframe 1)))
+		      ('b' (set curframe (- curframe 1)))
+		      ('F' (set curframe (+ curframe 10)))
+		      ('B' (set curframe (- curframe 10)))
+		      ('.' (print "Audio skew: " (set audioskew (+ audioskew 0.1)) newline))
+		      (',' (print "Audio skew: " (set audioskew (- audioskew 0.1)) newline))
+		      ('i' (print "Frame " curframe " size " jpegsize newline))
+		      ('s' (begin
+			     (set trimstart curframe)
+			     (print "Starting frame for trim set to " curframe newline)))
+		      ('e' (begin
+			     (set trimend curframe)
+			     (print "Ending frame for trim set to " curframe newline)))
+		      ('t' (begin
+			     (print "Trimming from frame " trimstart "to " trimend "..." newline)
+			     (if (<= trimstart trimend)
+				 (begin
+				   (print "Enter filename for trimmed movie: ")
+				   (set trimname (read-string))
+				   (trim-movie trimstart trimend filename trimname))
+				 (print "*** Invalid trimming region." newline))
+			     (print "Showing frame " curframe newline)))
+		      ('j' (switch coding
+			     ("jpeg"
+			      (begin
+				(set outbuf (malloc (* (framesize 0) (framesize 1) 3)))
+				(set outsize (movie curframe outbuf))
+				(print "Enter filename for JPEG: ")
+				(set outname (read-string))
+				(set outfile (open-output outname))
+				(if outfile
+				    (begin
+				      (write-raw outfile outsize outbuf)
+				      (close outfile)
+				      (print "Frame " curframe "saved as JPEG in " outname newline))
+				    (print "Unable to open " outname newline))
+				(free outbuf)))
+			     (else 
+			      (print "Cannot save non-JPEG coded data yet." newline))))
+		      ('J' (switch coding
+			     ("jpeg"
+			      (begin
+				(set outbuf (malloc (* (framesize 0) (framesize 1) 3)))
+				(set outsize (movie curframe outbuf))
+				(set outname 
+				  (append "frame" 
+					  (last 5 (append "000000" (uneval curframe)))
+					  ".jpg"))
+				(set outfile (open-output outname))
+				(if outfile
+				    (begin
+				      (write-raw outfile outsize outbuf)
+				      (close outfile)
+				      (print "Frame " curframe "saved as JPEG in " outname newline))
+				    (print "Unable to open " outname newline))
+				(free outbuf)))
+			     (else 
+			      (print "Cannot save non-JPEG coded data yet." newline))))
+		      ('q' (begin
+			     (if audiofile 
+				 (begin
+				   (alsa-close alsa)
+				   (close audiofile)
+				   (free buf)))
+			     (movie "close")
+			     (set usage Null)
+			     (set docommand Null)
+			     (exit)))
+		      ('/' (if (and playing audiofile)
+			       (begin
+				 (print "Restarting audio" newline)
+				 (alsa-drop alsa)
+				 (alsa-prepare alsa)
+				 (seek audiofile 
+				       (audio-calc-size (+ audioskew (/ (real curframe) fps))
+							chans rate bits)))))
+		      ('p' (if playing
+			       (begin
+				 (print "Paused on frame " curframe newline)
+				 (set playing False)
+				 (if audiofile (alsa-drop alsa)))
+			       (begin
+				 (print "Start playing." newline)
+				 (set entryframe curframe)
+				 (set playing True)
+				 (timer 'r')
+				 (if audiofile 
+				     (begin
+				       (alsa-prepare alsa)
+				       (seek audiofile 
+					     (audio-calc-size (+ audioskew (/ (real entryframe) fps))
+							      chans rate bits)))))))
+		      (else (begin
+			      (set newframe (eval command))
+			      (if (integer? newframe) (set curframe newframe))))))))
+	      
+	      # main loop
+	      
+	      (set timer (new-timer))
+	      (set curframe 0)
+	      (set lastframe Null)
+	      (set entryframe 0)
+	      (set playing False)
+	      (set lastcommand "p")
+	      
+	      (macaroni-start
+	       (proc ()
+		 (begin
+    
+		   # get keyboard commands
+		   (while (pending) (docommand (read-string)))
+		   
+		   # process audio
+		   
+		   (while (and audiofile playing 
+			       (write-ready alsafd)
+			       (set inbytes (read-raw audiofile bufbytes buf)))
+		     (begin
+		       (if (!= inbytes bufbytes) (set-memory (- bufbytes inbytes) 0 (+ buf inbytes)))
+		       (alsa-write alsa bufsamps buf)))
+		   
+		   # process video
+		   
+		   (if playing (set curframe (+ entryframe (integer (* fps (timer))))))
+		   (set curframe (clamp 0 finalframe curframe))
+		   (mobj [mac-frame curframe])
+		   (macaroni-update-window rootwin mtrans True)
+		   
+		   (if (and (!= curframe lastframe) (not playing))
+		       (print "Showing frame " curframe newline))
+		   (if (and playing (= curframe finalframe))
+		       (begin
+			 (print "Paused on frame " curframe newline)
+			 (set playing False)
+			 (if audiofile (alsa-drop alsa))))
+		   (set lastframe curframe)
+		   
+		   )))
+	      ))))))
+
+(set browse-movie browse-movie-opengl-alsa)
+
+############################################################################
+# Trim movie
+
+(set trim-movie
+  (proc (trim-start trim-end infilename outfilename)
+    (local (movie outbasename keystructure curframe
+                  framecount fsize foffset framesize transbufsize
+                  transbuf data-file offset-file info-file offsetbuf
+                  fps)
+      (begin
+        (set movie (new-isis-movie infilename))
+	(set outbasename (if (create-directory outfilename)
+			     (append outfilename "/")))
+        (set keystructure (new-structure))
+        (set curframe trim-start)
+        (set framecount 0)
+        (set fsize 0)
+        (set foffset 0)
+        (if (and movie outbasename (<= trim-start trim-end))
+            (begin
+              (set framesize (movie "framesize"))
+              (set fps (movie "fps" 29.97))
+              (if (= fps 30.0) (set fps 29.97))
+              (set transbufsize (* 3 (framesize 0) (framesize 1)))
+              (set transbuf (malloc transbufsize))
+              (set data-file (open-output (append outbasename "data")))
+              (set offset-file (open-output (append outbasename "offsets")))
+              (set info-file (open-output (append outbasename "info")))
+              (set offsetbuf (malloc 24))
+              (while (<= curframe trim-end)
+                (begin
+                  (print return "Trimming.... " curframe)
+                  (set fsize (movie curframe transbuf))
+                  (set foffset (tell data-file))
+                  (offsetbuf c-int foffset)
+                  ((+ offsetbuf 4) c-int fsize)
+                  (write-raw offset-file 8 offsetbuf)
+                  (write-raw data-file fsize transbuf)
+                  (set curframe (+ curframe 1))
+                  (set framecount (+ framecount 1))))
+              (keystructure "isis-movie-version" isis-movie-version)
+              (keystructure "data-file" "data")
+              (keystructure "offset-file" "offsets")
+              (keystructure "framecount" framecount)
+              (keystructure "framesize" (movie "framesize"))
+              (keystructure "coding" (movie "coding"))
+              (keystructure "fps" fps)
+              (if (movie "audio-file")
+                  (local (inname infile outname outfile chans Fs bits
+                                 startpos endpos translen)
+                    (begin
+                      (set inname (append infilename "/" (movie "audio-file")))
+                      (set infile (open-input inname))
+                      (set outname (append outbasename "audio"))
+                      (set outfile (open-output outname))
+                      (set chans (movie "audio-channels"))
+                      (set Fs (movie "audio-rate"))
+                      (set bits (movie "audio-bits"))
+                      (set startpos 
+                        (& (~ 3) (integer 
+                                  (* (/ (real trim-start) fps) 
+                                     Fs chans (/ bits 8)))))
+                      (set endpos 
+                        (& (~ 3) (integer 
+                                  (* (/ (real (+ 1 trim-end)) fps) 
+                                     Fs chans (/ bits 8)))))
+                      (set translen (- endpos startpos))
+                      (print newline "Trimming audio.... ")
+                      (seek infile startpos)
+                      (transfer-data infile outfile translen)
+                      (keystructure "audio-file" "audio")
+                      (keystructure "audio-format" "PCM")
+                      (keystructure "audio-channels" chans)
+                      (keystructure "audio-rate" Fs)
+                      (keystructure "audio-bits" bits)
+                      (keystructure "audio-size" translen)
+                      (close infile)
+                      (close outfile))))
+              (write-structure info-file keystructure)
+              (close info-file)
+              (close offset-file)
+              (close data-file)
+              (movie "close")
+              (free transbuf)
+              (free offsetbuf)
+              (print newline "Done." newline))
+            (print "*** Problem trimming " infilename newline))))))
+
+############################################################################
+# Movie player
+
+(set mp-process 1)
+(set mp-enqueue 2)
+(set mp-timeleft 3)
+(set mp-skip 4)
+(set mp-delqueue 5)
+(set mp-reset 6)
+(set mp-resync 7)
+(set mp-quit 10)
+
+(set new-movie-player
+  (proc (macobj chans rate bits unsigned bigendian)
+    (local (alsa bufsamps bufbytes buf alsafd silence videoqueue audioqueue
+		 vplaying aplaying timer fudge resyncflag
+		 next-video vinfo movie startframe duration fps vstarttime vendtime
+		 next-audio ainfo aport desdur actdur bytestogo
+		 process-audio numbytes leftover fillbytes
+		 thetime movietime curframe process-video command)
+      (if (not (set alsa (alsa-open-output))) 
+	  (print "Could not open ALSA audio." newline)
+	  (if (not (set bufsamps (alsa-setup alsa bits unsigned bigendian (integer rate) chans rate)))
+	      (begin 
+		(print "Error ALSA audio setup." newline)
+		(alsa-close alsa))
+	      (begin
+		(set bufbytes (* chans (/ bits 8) bufsamps))
+		(set buf (malloc bufbytes))
+		(set alsafd (unix-new-port-FD "ALSA" (alsa-filedes alsa) True True))
+		(set silence (if (= bits 8) 128 0))
+		(set videoqueue [])
+		(set audioqueue [])
+		(set aport Null)
+		(set vplaying False)
+		(set aplaying False)
+		(set resyncflag False)
+		(set fudge 0.0)
+		(set timer (new-timer))
+		(set next-video
+		  (proc ()
+		    (begin
+		      # (print "Changing video" newline)
+		      (set vinfo (videoqueue 0))
+		      (set videoqueue (allbutfirst 1 videoqueue))
+		      (set movie (vinfo 0))
+		      (set startframe (vinfo 1))
+		      (set duration (vinfo 2))
+		      (set fps (vinfo 3))
+		      (if (not vplaying) (timer 'r'))
+		      (set vstarttime (if vplaying vendtime 0.0))
+		      (set vendtime (+ vstarttime duration))
+		      (set vplaying True)
+		      (macobj [mac-movie movie]
+			      [mac-mute False])
+		      (if resyncflag 
+			  (begin
+			    (print "Resyncing audio to video" newline)
+			    (alsa-drop alsa)
+			    (set aplaying False)
+			    (set resyncflag False)
+			    (next-audio)))
+		      )))
+		(set next-audio
+		  (proc ()
+		    (begin
+		      # (print "Changing audio" newline)
+		      (if (!= Null aport) (close aport))
+		      (set ainfo (audioqueue 0))
+		      (set audioqueue (allbutfirst 1 audioqueue))
+		      (set aport (ainfo 0))
+		      (if (not aplaying) (set fudge 0.0))
+		      (set desdur (ainfo 1))
+		      (set bytestogo (audio-calc-size (- desdur fudge) chans rate bits))
+		      (set actdur (/ (real bytestogo) (/ bits 8) chans rate))
+		      # (display desdur bytestogo actdur fudge (- (+ fudge actdur) desdur))
+		      (set fudge (- (+ fudge actdur) desdur))
+		      (set aplaying True)
+		      (if (not (alsa-state alsa)) (alsa-prepare alsa))
+		      )))
+		(set process-audio
+		  (proc ()
+		    (while (and aplaying bytestogo (write-ready alsafd)
+				(set numbytes (read-raw aport (min bytestogo bufbytes) buf)))
+		      (begin
+			(set bytestogo (- bytestogo numbytes))
+			(while (set leftover (- bufbytes numbytes))
+			  (if (and audioqueue (not resyncflag))
+			      (begin # start next audio clip
+				(next-audio)
+				(set fillbytes (read-raw aport (min bytestogo leftover)
+							 (+ buf numbytes)))
+				(set bytestogo (- bytestogo fillbytes))
+				(set numbytes (+ numbytes fillbytes)))
+			      (begin # fill with silence
+				(set-memory leftover silence (+ buf numbytes))
+				(set numbytes (+ numbytes leftover))
+				(set resyncflag False)
+				(set aplaying False))))
+			(if (not (alsa-state alsa))
+			    (begin
+			      # (print "Continuity lost" newline)
+			      (set resyncflag True)
+			      (alsa-prepare alsa)))
+			(alsa-write alsa bufsamps buf)
+			(if (and (not bytestogo) audioqueue (not resyncflag)) (next-audio))
+			))))
+		(set process-video
+		  (proc ()
+		    (begin
+		      (while (and vplaying (>= (set thetime (timer)) vendtime))
+			(if videoqueue 
+			    (next-video) 
+			    (begin (set vplaying False)
+				   (macobj [mac-mute True]))))
+		      (if vplaying
+			  (begin
+			    (set movietime (- thetime vstarttime))
+			    (set curframe (+ startframe (integer (* fps movietime))))
+			    (macobj [mac-frame curframe])))
+		      )))
+		(set command
+		  (proc (msg)
+		    (switch (msg 0)
+		      (mp-process 
+		       (begin
+			 (if (and (not aplaying) audioqueue)
+			     (next-audio))
+			 (if (and (not vplaying) videoqueue)
+			     (next-video))
+			 (if aplaying (process-audio))
+			 (if vplaying (process-video))
+			 ))
+		      (mp-enqueue 
+		       (local (movie fps numframes runtime entry dur vstart aname astart afile)
+			 (begin 
+			   (set movie (msg 1))
+			   (set fps (movie "fps" 29.97))
+			   (set numframes (movie "framecount"))
+			   (set runtime (/ (real numframes) fps))
+			   (set entry (if (and (> (length msg) 2) (!= Null (msg 2))) 
+					  (real (msg 2)) 
+					  0.0))
+			   (set dur (if (and (> (length msg) 3) (!= Null (msg 3)))
+					(real (msg 3))
+					runtime))
+			   (set vstart (integer (* entry fps)))
+			   (set aname (movie "audio-file"))
+			   (set astart (audio-calc-size entry chans rate bits))
+			   (set afile 
+			     (if aname (open-input (append (movie "basename") "/" aname))))
+			   (seek afile astart)
+			   (set audioqueue (tail-insert [ afile dur ] 
+							audioqueue))
+			   (set videoqueue (tail-insert [ movie vstart dur fps vplaying ] 
+							videoqueue))
+			   )))
+		      (mp-timeleft 
+		       (if vplaying
+			   (max 0.0 
+				(+ (- vendtime (timer))
+				   (if videoqueue 
+				       (apply + (map (proc (x) (x 2)) videoqueue)) 
+				       0.0)))
+			   0.0))
+		      (mp-skip
+		       (begin
+			 (alsa-drop alsa)
+			 (set vplaying False)
+			 (set aplaying False)
+			 (set resyncflag False)
+			 (macobj [mac-mute True])
+			 (if audioqueue (next-audio))
+			 (if videoqueue (next-video))
+			 ))
+		      (mp-delqueue
+		       (begin
+			 (set videoqueue [])
+			 (map (proc (ainfo) (close (ainfo 0))) audioqueue)
+			 (set audioqueue [])
+			 ))
+		      (mp-reset 
+		       (begin
+			 (command [mp-delqueue])
+			 (command [mp-skip])))
+		      (mp-resync (if aplaying (set resyncflag True)))
+		      (mp-quit 
+		       (begin
+			 (set next-video Null)
+			 (set next-audio Null)
+			 (set process-audio Null)
+			 (set process-video Null)
+			 (set command Null)
+			 (if (!= aport Null) (close aport))
+			 (alsa-drop alsa)
+			 (alsa-close alsa)
+			 (free buf)
+			 ))
+		      )))
+		(proc args ((map command args) 0))))))))
+
+
+############################################################################
+# Silent movie player
+# obeys same protocol as movie player, just without audio
+
+(set new-silent-movie-player
+  (proc (macobj)
+    (local (videoqueue vplaying timer next-video vinfo movie startframe 
+		       duration fps vstarttime vendtime thetime movietime 
+		       curframe process-video command)
+      (begin
+	(set videoqueue [])
+	(set vplaying False)
+	(set timer (new-timer))
+	(set next-video
+	  (proc ()
+	    (begin
+	      (set vinfo (videoqueue 0))
+	      (set videoqueue (allbutfirst 1 videoqueue))
+	      (set movie (vinfo 0))
+	      (set startframe (vinfo 1))
+	      (set duration (vinfo 2))
+	      (set fps (vinfo 3))
+	      (set vstarttime (if vplaying vendtime (timer)))
+	      (set vendtime (+ vstarttime duration))
+	      (set vplaying True)
+	      (macobj [mac-movie movie]
+		      [mac-mute False])
+	      )))
+	(set process-video
+	  (proc ()
+	    (begin
+	      (while (and vplaying (>= (set thetime (timer)) vendtime))
+		(if videoqueue 
+		    (next-video) 
+		    (begin (set vplaying False)
+			   (macobj [mac-mute True]))))
+	      (if vplaying
+		  (begin
+		    (set movietime (- thetime vstarttime))
+		    (set curframe (+ startframe (integer (* fps movietime))))
+		    (macobj [mac-frame curframe])))
+	      )))
+	(set command
+	  (proc (msg)
+	    (switch (msg 0)
+	      (mp-process 
+	       (begin
+		 (if (and (not vplaying) videoqueue) (next-video))
+		 (if vplaying (process-video))
+		 ))
+	      (mp-enqueue 
+	       (local (movie fps numframes runtime entry dur vstart aname astart afile)
+		 (begin 
+		   (set movie (msg 1))
+		   (set fps (movie "fps" 29.97))
+		   (set numframes (movie "framecount"))
+		   (set runtime (/ (real numframes) fps))
+		   (set entry (if (and (> (length msg) 2) (!= Null (msg 2))) 
+				  (real (msg 2)) 
+				  0.0))
+		   (set dur (if (and (> (length msg) 3) (!= Null (msg 3)))
+				(real (msg 3))
+				runtime))
+		   (set vstart (integer (* entry fps)))
+		   (set videoqueue (tail-insert [ movie vstart dur fps vplaying ] 
+						videoqueue))
+		   )))
+	      (mp-timeleft 
+	       (if vplaying
+		   (max 0.0 
+			(+ (- vendtime (timer))
+			   (if videoqueue 
+			       (apply + (map (proc (x) (x 2)) videoqueue)) 
+			       0.0)))
+		   0.0))
+	      (mp-skip
+	       (begin
+		 (set vplaying False)
+		 (macobj [mac-mute True])
+		 (if videoqueue (next-video))
+		 ))
+	      (mp-delqueue
+	       (begin
+		 (set videoqueue [])
+		 ))
+	      (mp-reset 
+	       (begin
+		 (command [mp-delqueue])
+		 (command [mp-skip])))
+	      (mp-quit 
+	       (begin
+		 (set next-video Null)
+		 (set process-video Null)
+		 (set command Null)
+		 ))
+	      )))
+	(proc args ((map command args) 0))))))

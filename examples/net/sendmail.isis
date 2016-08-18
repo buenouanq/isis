@@ -1,0 +1,17 @@
+
+(set sendmail
+  (proc (sender receiver message)
+    (local (tcp)
+      (if (!= Null (set tcp (tcp-open "outgoing.media.mit.edu" 25)))
+          (begin
+	    (write-string tcp "helo media.mit.edu" newline)
+            (write-string tcp "mail from: " sender newline)
+            (write-string tcp "rcpt to: " receiver newline)
+            (write-string tcp "data" newline)
+            (write-string tcp message newline "." newline)
+            (write-string tcp "quit" newline)
+            (close tcp))
+          (print "Could not send that mail." newline)))))
+
+
+

@@ -1,0 +1,163 @@
+# image coding routines
+# stefan agamanolis
+
+##########################################################################
+# Reading/writing JPEG images
+
+(set decode-jpeg
+  (proc (inbuf bufsize)
+    (local (jd imageinfo framesize chans image)
+      (begin
+        (set jd (jpeg-create-decompress))
+        (jpeg-set-decompress-source-buffer jd inbuf bufsize)
+        (if (not (set imageinfo (jpeg-read-header jd)))
+            (print "** read-jpeg: Unable to read header." newline)
+            (begin
+              (set chans (imageinfo 0))
+              (set framesize (imageinfo 1))
+              (set image (new-standard-image chans framesize))
+              (if (= Null (jpeg-decompress jd (image buf-chans) 
+                                           (image buf-size) 
+                                           (image buf-addrs) 
+                                           (image buf-steps)))
+                  (begin
+                    (free-image image)
+                    (set image Null)
+                    (print "** read-jpeg: Unable to decompress." newline)))))
+        (jpeg-destroy-decompress jd)
+        image))))
+
+(set encode-jpeg
+  (proc args
+    (local (image outbuf bufsize quality tableflag jc
+                  colspace chans framesize)
+      (begin
+        (set image (args 0))
+        (set outbuf (args 1))
+        (set bufsize (args 2))
+        (set quality (if (> (length args) 3) (args 3)))
+        (set tableflag (if (> (length args) 4) (args 4) True))
+        (set colspace jpeg-colorspace-rgb)
+        (set chans (image buf-chans))
+        (set framesize (image buf-dims))
+        (if (not (or (= chans 3) (= chans 1)))
+            (print "** write-jpeg: Image must be 1 or 3 channels" newline)
+            (begin
+              (if (= chans 1) (set colspace jpeg-colorspace-grayscale))
+              (set jc (jpeg-create-compress colspace chans framesize))
+              (if quality (jpeg-set-compress-quality jc quality))
+              (jpeg-set-compress-destination-buffer jc outbuf bufsize)
+              (if (= Null (set bytes-left (jpeg-compress jc chans framesize
+                                                         (image buf-addrs) 
+                                                         (image buf-steps)
+                                                         tableflag)))
+                  (begin 
+                    (jpeg-destroy-compress jc)
+                    (print "** write-jpeg: Unable to compress." newline))
+                  (begin
+                    (jpeg-destroy-compress jc)
+                    (- bufsize bytes-left)))))))))
+
+(set read-jpeg
+  (proc args
+    (local (file len jpegbuf res image)
+      (begin
+        (set file (args 0))
+        (set len (if (> (length args) 1) (args 1)))
+        (if len
+            (set jpegbuf ((read-data file len) 0))
+            (begin
+              (if (bound? sdebug) (print "Stefan debug message: Reading jpeg data." newline))
+              (set res (read-unknown-length-data file))
+              (set jpegbuf (res 0))
+              (set len (res 1))))
+        (if (bound? sdebug) (print "Stefan debug message: Decoding jpeg data." newline))
+        (set image (decode-jpeg jpegbuf len))
+        (if (bound? sdebug) (print "Stefan debug message: Done decoding jpeg data." newline))
+        (free jpegbuf)
+        image))))
+
+(set write-jpeg
+  (proc args
+    (local (file image quality tableflag chans framesize
+                 bufsize outbuf jpegsize)
+      (begin
+        (set file (args 0))
+        (set image (args 1))
+        (set quality (if (> (length args) 2) (args 2)))
+        (set tableflag (if (> (length args) 3) (args 3) True))
+        (set chans (image buf-chans))
+        (set framesize (image buf-dims))
+        (set bufsize (+ 4096 (* (framesize 0) (framesize 1) 2)))
+        (set outbuf (malloc bufsize))
+        (set jpegsize (encode-jpeg image outbuf bufsize quality tableflag))
+        (if jpegsize (write-raw file jpegsize outbuf))
+        (free outbuf)
+        jpegsize))))
+
+
+##########################################################################
+# Reading GIF images  (can't write GIF's right now)
+
+# Now reads frame-optimized GIF animations and uses local colormaps
+
+(set decode-gif
+  (proc (buf)
+    (local (gf chans dims currgbbuf curabuf curbuf bufs)
+      (begin
+        (set gf (gif-create buf))
+        (set chans Null)
+        (set dims Null)
+        (set currgbbuf Null)
+        (set curabuf Null)
+        (set curbuf Null)
+        (if (set dims (gif-read-header gf))
+            (begin
+	      (set bufs [])
+              (set currgbbuf (new-standard-image 3 dims))
+              (set curabuf (new-standard-image 1 dims))
+              (image-fill-constant 0 currgbbuf)
+              (image-fill-constant 255 curabuf)
+              (set curbuf (combine-channels currgbbuf curabuf))
+              (set chans (gif-read-image gf (curbuf buf-dims)
+                                         (curbuf buf-addrs) 
+                                         (curbuf buf-steps)))
+              (while chans
+                (begin
+                  (if (= chans 4) 
+                      (set bufs (tail-insert curbuf bufs))
+                      (begin 
+                        (set bufs (tail-insert currgbbuf bufs))
+                        (free-image curabuf)))
+                  (set currgbbuf (new-standard-image 3 dims))
+                  (set curabuf (new-standard-image 1 dims))
+                  (image-transfer (isolate-channels 0 2 (tail bufs))
+                                  currgbbuf)
+                  (if (= ((tail bufs) buf-chans) 4)
+                      (image-transfer (isolate-channel 3 (tail bufs))
+                                      curabuf)
+                      (image-fill-constant 255 curabuf))
+                  (set curbuf (combine-channels currgbbuf curabuf))
+                  (set chans (gif-read-image gf (curbuf buf-dims)
+                                             (curbuf buf-addrs) 
+                                             (curbuf buf-steps)))))
+              (free-image currgbbuf)
+              (free-image curabuf)))
+        (gif-destroy gf)
+        bufs))))
+
+(set read-gif
+  (proc args
+    (local (file len gifbuf imgbufs)
+      (begin
+        (set file (args 0))
+        (set len (if (> (length args) 1) (args 1)))
+        (set gifbuf Null)
+        (set imgbufs Null)
+        (if len
+            (set gifbuf ((read-data file len) 0))
+            (set gifbuf ((read-unknown-length-data file) 0)))
+        (set imgbufs (decode-gif gifbuf))
+        (free gifbuf)
+        imgbufs))))
+

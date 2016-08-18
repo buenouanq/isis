@@ -1,0 +1,125 @@
+############################################################################
+# Platform independent video capture routines
+# Stefan Agamanolis
+############################################################################
+
+############################################################################
+# Constants
+
+(set vc-rgb 1100)
+(set vc-yuv 1101)
+(set vc-jpeg 1102)
+
+(set vc-ntsc 1110)
+(set vc-pal 1111)
+(set vc-secam 1112)
+
+(set vc-odd 1121)
+(set vc-even 1122)
+(set vc-both 1123)
+(set vc-interlace 1124)
+
+(set vc-size 1130)
+(set vc-format 1131)
+(set vc-device 1132)
+(set vc-input 1133)
+(set vc-standard 1134)
+(set vc-field 1135)
+
+(set vc-read-frame 1140)
+(set vc-frame-info 1141)
+(set vc-close 1142)
+
+############################################################################
+# Video capture object
+# see web site for documentation
+
+(set new-video-capture
+  (proc args
+    (local (sys framesize format device inputnum standard fieldmode)
+      (begin
+
+        # set defaults
+        (set framesize [320 240])
+        (set format vc-rgb)
+        (set device 0)
+        (set inputnum 1)
+        (set standard vc-ntsc)
+        (set fieldmode vc-even)
+
+        # get arguments
+        (map (proc (arg)
+               (switch (arg 0)
+                 (vc-size (set framesize (arg 1)))
+                 (vc-format (set format (arg 1)))
+                 (vc-device (set device (arg 1)))
+                 (vc-input (set inputnum (arg 1)))
+                 (vc-standard (set standard (arg 1)))
+                 (vc-field (set fieldmode (arg 1)))
+		 (else (print "*** Unrecognized option: " arg newline))))
+             args)
+	
+	# determine capture subsystem to use
+	(set sys 
+          (cond 
+	   ((bound? isis_v4l2) "v4l2")
+	   (True (print "*** There is no video capture interface available." newline))))
+
+	# switch control based on available capture interface
+        (switch sys
+
+	  # Video for Linux 2
+          ("v4l2"
+           (local (v4l2std v4l2format v4l2fieldmode v4l2device vc vport finfo)
+             (begin
+	       # Set V4L2 equivalents for parameters
+               (set v4l2std (switch standard
+			      (vc-ntsc "ntsc")
+			      (vc-pal "pal")
+			      (vc-secam "secam")
+			      (else standard)))
+	       (set v4l2format (switch format
+				 (vc-rgb vcap-bgr32)
+				 (vc-yuv vcap-yuyv)
+				 (vc-grey vcap-grey)))
+	       (set v4l2fieldmode (switch fieldmode
+				    (vc-odd vcap-field-bottom)
+				    (vc-even vcap-field-top)
+				    (vc-both vcap-field-both)
+				    (vc-interlace vcap-field-interlaced)))
+	       (set v4l2device (append "/dev/video" (uneval device)))
+	       
+	       (if (not (set vc (vcap-open (set vport (open-update v4l2device)))))
+		   (begin
+		     (print "*** Error initiating capture from " v4l2device newline)
+		     (close vport))
+		   
+		   (begin
+		     
+		     # set capture source and format
+		     (vcap-input vc inputnum)
+		     (if (not (vcap-standard vc v4l2std))
+			 (begin
+			   (print "Supported standards for input " inputnum ":" newline)
+			   (map (proc (x) (print x " ")) (vcap-standards vc inputnum))
+			   (print newline)))
+		     (set finfo (vcap-format vc framesize v4l2format v4l2fieldmode))
+		     (set framesize (finfo 0))
+		     (set v4l2format (finfo 1))
+		     (vcap-start vc)
+		     
+		     (proc args
+		       (if (not args)
+                           (begin
+			     # wait for frame to come in
+			     (pending vport 1000000)
+			     # read frame
+			     (set finfo (vcap-read vc))
+			     # return isis image
+			     (vcap-image vc framesize v4l2format (finfo 1)))
+			   (switch (args 0)
+			     (else (begin 
+				     (vcap-stop vc)
+				     (vcap-close vc)
+				     (close vport)))))))))))
+	  )))))

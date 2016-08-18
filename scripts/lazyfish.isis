@@ -1,0 +1,65 @@
+### isis lazyfish sensor interface
+### written by stefan agamanolis
+
+###########################################################################
+# LAZYFISH SENSOR (DIRECTLY CONNECTED TO A SERIAL PORT)
+#
+# To use:  1. (set lazyfish-port (lazyfish-initialize "/dev/tty00"))
+#          2. (lazyfish-value lazyfish-port)
+
+(set lazyfish-readbuf (malloc 48))
+
+(set lazyfish-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 lazyfish-readbuf))))
+
+(set lazyfish-initialize
+  (proc (device-name)
+    (local (port)
+      (begin
+        (set port (open-update device-name))
+        (initialize-serial-port port 38400 8 1 Null False)
+        (lazyfish-flush-port port)
+        port))))
+
+(set lazyfish-read-all
+  (proc (port)
+    (begin
+      (write-string port "W")
+      (read-raw port 18 lazyfish-readbuf)
+      (eval (append "[" (lazyfish-readbuf [c-char 18]) "]")))))
+
+(set lazyfish-read-single
+  (proc (port)
+    (begin
+      (write-string port "S")
+      (read-raw port 6 lazyfish-readbuf)
+      (eval (lazyfish-readbuf [c-char 6])))))
+
+(set lazyfish-test
+  (proc (port)
+    (begin
+      (write-string port "T")
+      (read-raw port 24 lazyfish-readbuf)
+      (eval (append "[" (lazyfish-readbuf [c-char 24]) "]")))))
+
+(set lazyfish-select-receiver
+  (proc (port rcv)
+    (begin
+      (write-string port "C" (uneval rcv))
+      rcv)))
+
+(set lazyfish-select-transmitter
+  (proc (port trs)
+    (begin
+      (write-string port "X" (uneval trs))
+      trs)))
+
+(set lazyfish-set-parameters
+  (proc (port iparam tparam)
+    (begin
+      (lazyfish-readbuf c-char 'I')
+      ((+ lazyfish-readbuf 1) c-char iparam)
+      ((+ lazyfish-readbuf 2) c-char tparam)
+      (write-raw port 3 lazyfish-readbuf))))
+

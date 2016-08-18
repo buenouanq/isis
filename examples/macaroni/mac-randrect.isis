@@ -1,0 +1,70 @@
+############################################################################
+# Macaroni RANDRECT
+# Creates a bunch of rotating rectangles
+# Each rectangle has a random size, position, color, and opacity
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Randrect")
+(set macwin (macaroni-create-window "Randrect" [300 300] [100 100] True))
+
+############################################################################
+# Functions to make random colors, positions, and sizes
+
+(seed-random ((get-time) 1))  # seed rand num generator with current time
+
+(set random-color 
+  (proc () [ (/ (real (random 0 255)) 255.0)
+             (/ (real (random 0 255)) 255.0)
+             (/ (real (random 0 255)) 255.0)
+             (/ (real (random 0 255)) 255.0) ]))
+(set random-position
+  (proc () [ (real (random 0 300))
+             (real (random 0 300)) ]))
+(set random-size
+  (proc ()  [ (real (random 30 100)) 
+              (real (random 30 100)) ]))
+
+############################################################################
+# Create Macaroni rectangle objects
+
+(set numrects 50)
+
+(set rectobjs 
+  (map (proc (x) 
+         (local (size)
+           (begin
+             (set size (random-size))
+             (mac-new-rectangle [mac-size size]
+                                [mac-position (/ size [-2.0 -2.0])]))))
+       (make-list numrects Null)))
+
+############################################################################
+# Create one Macaroni transform object for each rectangle
+
+(set transobjs 
+  (map (proc (obj) (mac-new-transform [mac-object obj]
+                                      [mac-color (random-color)]
+                                      [mac-position (random-position)]))
+       rectobjs))
+
+############################################################################
+# Create a Macaroni scene containing all the objects
+
+(set scene (mac-new-scene [mac-objects transobjs]))
+
+############################################################################
+# Start looping, incrementing the rotation each pass
+
+(set rot 0.0)
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (map (proc (trans) (trans [mac-rotation rot]))
+          transobjs)
+     (set rot (+ rot 1.0))
+     (macaroni-update-window macwin scene True))))

@@ -1,0 +1,1822 @@
+############################################################################
+# Object-oriented media package for Isis
+############################################################################
+
+(load "smart-window.isis")
+
+############################################################################
+# Helpful functions 
+
+############################################################################
+# Engines
+
+# Constants may be 0-29
+
+(set eng-actor 12)
+(set eng-actors 12)
+(set eng-actor-list 13)
+
+(set eng-add-actor 14)
+(set eng-add-actors 14)
+
+(set eng-remove-actor 15)
+(set eng-remove-actors 15)
+
+(set eng-window 16)
+(set eng-camera 17)
+
+(set eng-render 18)
+(set eng-render-background 19)
+(set eng-reset 20)
+
+(set eng-clearmode 21)
+
+(set new-engine
+  (proc args
+    (local (window camera actors clearmode handler)
+      (begin
+        (set window Null)
+        (set camera Null)
+        (set actors [])
+        (set clearmode True)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (eng-render
+                 (begin
+                   (if clearmode (window [win-clear]))
+                   (map (proc (actor)
+                          (local (mod)
+                            (begin
+                              (set mod (actor [ac-render (window win-buf)]))
+                              (if mod (window (head-insert win-modify mod))))))
+                        actors)
+                   (window [win-draw])))
+                (eng-render-background
+                 (begin
+                   (if clearmode (window [win-clear]))
+                   (map (proc (actor)
+                          (local (mod)
+                            (begin
+                              (set mod (actor [ac-render (window win-buf)]))
+                              (if mod (window (head-insert win-modify mod))))))
+                        actors)
+                   (window [win-save])))
+                (eng-actors (set actors (allbutfirst 1 arg)))
+                (eng-actor-list (set actors (arg 1)))
+                (eng-window (set window (arg 1)))
+                (eng-camera (set camera (arg 1)))
+                (eng-add-actors 
+                 (begin
+                   (map (proc (x)
+                          (if (= Null (search x actors))
+                              (set actors (tail-insert x actors))))
+                        (allbutfirst 1 arg))
+                   actors))
+                (eng-remove-actors 
+                 (begin
+                   (map (proc (x) (set actors (remove x actors)))
+                        (allbutfirst 1 arg))
+                   actors))
+                (eng-reset
+                 (begin
+                   (set window Null)
+                   (set camera Null)
+                   (set actors [])
+                   True))
+                (eng-clearmode (set clearmode (arg 1)))
+                (else (print "Unknown command on engine" newline))))
+             (True
+              (switch arg
+                (eng-window window)
+                (eng-camera camera)
+                (eng-actors actors)
+                (eng-clearmode clearmode)
+                (else (print "Unknown query on engine" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+
+############################################################################
+# Windows
+
+# Constants may be 200-299
+
+(set win-xwin 200)
+(set win-maxsize 201)
+(set win-size 202)
+(set win-title 203)
+(set win-pos 204)
+
+(set win-buf 205)
+(set win-bgbuf 206)
+(set win-bgmmebuf 207)
+
+(set win-modify 208)
+
+(set win-clear 209)
+(set win-save 210)
+
+(set win-draw 211)
+
+(set win-destroy 213)
+
+(set win-mme 214)
+(set win-mmebuf 216)
+(set win-mmebufaddr 217)
+
+(set new-window-x
+  (proc args
+    (local (xwin maxsize title size pos bgbuf fgbuf smartwin
+                 smartdisp handler)
+      (begin
+        (set xwin Null)
+        (set maxsize [640 480])
+        (set title [])
+        (set size maxsize)
+        (set pos [0 0])
+        (set bgbuf (image-fill-constant 0 (new-standard-image 3 maxsize)))
+        (set fgbuf (image-fill-constant 0 (new-standard-image 3 maxsize)))
+        (set smartwin (new-smart-window))
+        (set smartdisp Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw 
+                 (if (and xwin (set smartdisp (smartwin 'd' fgbuf)))
+                     (xwin-display-image xwin 
+                                         (smartdisp 0) 
+                                         (smartdisp 1))))
+                (win-modify (smartwin 'm' (arg 1) (arg 2)))
+                (win-clear (smartwin 'c' fgbuf bgbuf))
+                (win-save (smartwin 's' fgbuf bgbuf))
+                (win-size (if xwin (xwin-resize xwin (set size (arg 1)))))
+                (win-pos (if xwin (xwin-move xwin (set pos (arg 1)))))
+                (win-title (if xwin (xwin-title xwin (set title (arg 1)))))
+                (win-xwin (set xwin (arg 1)))
+                (win-maxsize 
+                 (begin
+                   (set maxsize (arg 1))
+                   (free-image bgbuf)
+                   (free-image fgbuf)
+                   (set bgbuf 
+                     (image-fill-constant 0 (new-standard-image 3 maxsize)))
+                   (set fgbuf 
+                     (image-fill-constant 0 (new-standard-image 3 maxsize)))
+                   (set smartwin (new-smart-window))
+                   (smartwin 'm' [0 0] maxsize)
+                   (smartwin 's' fgbuf bgbuf)))
+                (win-destroy 
+                 (begin
+                   (if xwin (xwin-destroy xwin))
+                   (set xwin Null)))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-xwin xwin)
+                (win-maxsize maxsize)
+                (win-size size)
+                (win-title title)
+                (win-pos pos)
+                (win-buf fgbuf)
+                (win-bgbuf bgbuf)
+                (else (print "Unknown query on window" newline)))))))
+        (smartwin 'm' [0 0] maxsize)
+        (smartwin 's' fgbuf bgbuf)
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-image-buffer
+  (proc args
+    (local (size bgbuf fgbuf smartwin handler)
+      (begin
+        (set size [0 0])
+        (set bgbuf Null)
+        (set fgbuf Null)
+        (set smartwin Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw (smartwin 'd' fgbuf))
+                (win-modify (smartwin 'm' (arg 1) (arg 2)))
+                (win-clear (smartwin 'c' fgbuf bgbuf))
+                (win-save (smartwin 's' fgbuf bgbuf))
+                (win-size Null)
+                (win-buf 
+                 (begin
+                   (set fgbuf (arg 1))
+                   (set bgbuf (arg 2))
+                   (set size (fgbuf buf-dims))
+                   (set smartwin (new-smart-window))))
+                (win-destroy 
+                 (begin
+                   (set smartwin Null)
+                   (set size [0 0])))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-size size)
+                (win-buf fgbuf)
+                (win-bgbuf bgbuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-image-buffer-yuv
+  (proc args
+    (local (size uvsize fgbuf fgybuf fguvbuf bgbuf bgybuf
+                 bguvbuf ysmartwin uvsmartwin handler)
+      (begin
+        (set size [0 0])
+        (set uvsize [0 0])
+        (set fgbuf Null)
+        (set fgybuf Null)
+        (set fguvbuf Null)
+        (set bgbuf Null)
+        (set bgybuf Null)
+        (set bguvbuf Null)
+        (set ysmartwin Null)
+        (set uvsmartwin Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw (begin
+                            (ysmartwin 'd' fgybuf)
+                            (uvsmartwin 'd' fguvbuf)))
+                (win-modify (begin
+                              (ysmartwin 'm' (arg 1) (arg 2))
+                              (uvsmartwin 'm' (arg 3) (arg 4))))
+                (win-clear (begin
+                             (ysmartwin 'c' fgybuf bgybuf)
+                             (uvsmartwin 'c' fguvbuf bguvbuf)))
+                (win-save (begin
+                            (ysmartwin 's' fgybuf bgybuf)
+                            (uvsmartwin 's' fguvbuf bguvbuf)))
+                (win-size Null)
+                (win-buf 
+                 (begin
+                   (set fgbuf (arg 1))
+                   (set fgybuf (fgbuf 0))
+                   (set fguvbuf (fgbuf 1))
+                   (set bgbuf (arg 2))
+                   (set bgybuf (bgbuf 0))
+                   (set bguvbuf (bgbuf 1))
+                   (set size (fgybuf buf-dims))
+                   (set uvsize (fguvbuf buf-dims))
+                   (set ysmartwin (new-smart-window))
+                   (set uvsmartwin (new-smart-window))))
+                (win-destroy 
+                 (begin
+                   (set ysmartwin Null)
+                   (set uvsmartwin Null)
+                   (set size [0 0])
+                   (set uvsize [0 0])))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-size size)
+                (win-buf fgbuf)
+                (win-bgbuf bgbuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-mme
+  (proc args
+    (local (mme framesize bufsize bgmmebuf bgbufaddr bgbuf
+                fgmmebuf fgbufaddr fgbuf handler)
+      (begin
+        (set mme Null)
+        (set framesize [0 0])
+        (set bufsize 0)
+        (set bgmmebuf Null)
+        (set bgbufaddr Null)
+        (set bgbuf Null)
+        (set fgmmebuf Null)
+        (set fgbufaddr Null)
+        (set fgbuf Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw (if mme (mme-write-frame mme fgmmebuf)))
+                (win-modify Null)
+                (win-clear 
+                 (if mme (copy-memory bufsize bgbufaddr fgbufaddr)))
+                (win-save 
+                 (if mme (copy-memory bufsize fgbufaddr bgbufaddr)))
+                (win-mme 
+                 (begin
+                   (if mme (begin (mme-free-buffer bgmmebuf)
+                                  (mme-free-buffer fgmmebuf)))
+                   (set mme (arg 1))
+                   (set framesize (arg 2))
+                   (set bufsize (* (framesize 0) (framesize 1) 4))
+                   (set fgmmebuf (mme-create-buffer mme-rgb framesize))
+                   (set fgbufaddr (mme-buffer-address fgmmebuf))
+                   (set fgbuf (mme-extract-image mme-rgb 3 
+                                                 framesize fgmmebuf))
+                   (set bgmmebuf (mme-create-buffer mme-rgb framesize))
+                   (set bgbufaddr (mme-buffer-address bgmmebuf))
+                   (set bgbuf (mme-extract-image mme-rgb 3 
+                                                 framesize bgmmebuf))
+                   (image-fill-constant 0 fgbuf)
+                   (image-fill-constant 0 bgbuf)))
+                (win-destroy (begin
+                               (mme-free-buffer fgmmebuf)
+                               (mme-free-buffer bgmmebuf)
+                               (set mme Null)))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-mme mme)
+                (win-size framesize)
+                (win-maxsize framesize)
+                (win-buf fgbuf)
+                (win-mmebuf fgmmebuf)
+                (win-mmebufaddr fgbufaddr)
+                (win-bgbuf bgbuf)
+                (win-bgmmebuf bgmmebuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-mme-stream
+  (proc args
+    (local (mme framesize bufsize numbufs curbuf outstanding
+                fgmmebufs fgmmebuf fgbufaddrs fgbufaddr fgbufs
+                fgbuf bgmmebuf bgbufaddr bgbuf handler)
+      (begin
+        (set mme Null)
+        (set framesize [0 0])
+        (set bufsize 0)
+        (set numbufs 2)
+        (set curbuf 0)
+        (set outstanding 0)
+        (set fgmmebufs Null)
+        (set fgmmebuf Null)
+        (set fgbufaddrs Null)
+        (set fgbufaddr Null)
+        (set fgbufs Null)
+        (set fgbuf Null)
+        (set bgmmebuf Null)
+        (set bgbufaddr Null)
+        (set bgbuf Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw 
+                 (if mme
+                     (begin
+                       (mme-write-frame mme fgmmebuf)
+                       (set outstanding (+ outstanding 1))
+                       (set curbuf (% (+ curbuf 1) numbufs))
+                       (set fgmmebuf (fgmmebufs curbuf))
+                       (set fgbufaddr (fgbufaddrs curbuf))
+                       (set fgbuf (fgbufs curbuf))
+                       (if (= outstanding numbufs)
+                           (begin
+                             (mme-stream-wait-for-buffer mme)
+                             (set outstanding (- outstanding 1)))))))
+                (win-modify Null)
+                (win-clear 
+                 (if mme (copy-memory bufsize bgbufaddr fgbufaddr)))
+                (win-save 
+                 (if mme (copy-memory bufsize fgbufaddr bgbufaddr)))
+                (win-mme 
+                 (begin
+                   (if mme (begin (mme-free-buffer bgmmebuf)
+                                  (map mme-free-buffer fgmmebufs)))
+                   (set mme (arg 1))
+                   (set framesize (arg 2))
+                   (set bufsize (* (framesize 0) (framesize 1) 4))
+                   (set curbuf 0)
+                   (set outstanding 0)
+                   (set fgmmebufs
+                     (map (proc (x) (mme-create-buffer mme-rgb framesize))
+                          (make-list numbufs Null)))
+                   (map (proc (x) (mme-prepare-buffer mme x)) fgmmebufs)
+                   (set fgbufaddrs (map mme-buffer-address fgmmebufs))
+                   (set fgbufs 
+                     (map (proc (x)
+                            (mme-extract-image mme-rgb 3 framesize x))
+                          fgmmebufs))
+                   (set bgmmebuf (mme-create-buffer mme-rgb framesize))
+                   (set bgbufaddr (mme-buffer-address bgmmebuf))
+                   (set bgbuf (mme-extract-image mme-rgb 3 
+                                                 framesize bgmmebuf))
+                   (map (proc (x) (image-fill-constant 0 x)) fgbufs)
+                   (image-fill-constant 0 bgbuf)
+                   (set fgmmebuf (fgmmebufs curbuf))
+                   (set fgbufaddr (fgbufaddrs curbuf))
+                   (set fgbuf (fgbufs curbuf))))
+                (win-destroy (begin
+                               (map (proc (x) 
+                                      (begin
+                                        (mme-unprepare-buffer mme x)
+                                        (mme-free-buffer x)))
+                                    fgmmebufs)
+                               (mme-free-buffer bgmmebuf)
+                               (set mme Null)))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-mme mme)
+                (win-size framesize)
+                (win-maxsize framesize)
+                (win-buf fgbuf)
+                (win-mmebuf fgmmebuf)
+                (win-mmebufaddr fgbufaddr)
+                (win-bgbuf bgbuf)
+                (win-bgmmebuf bgmmebuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-mme-yuv
+  (proc args
+    (local (mme framesize bufsize fgmmebuf fgbufaddr fgbuf
+                bgmmebuf bgbufaddr bgbuf ftimer handler)
+      (begin
+        (set mme Null)
+        (set framesize [0 0])
+        (set bufsize 0)
+        (set fgmmebuf Null)
+        (set fgbufaddr Null)
+        (set fgbuf Null)
+        (set bgmmebuf Null)
+        (set bgbufaddr Null)
+        (set bgbuf Null)
+        (set ftimer (new-timer))
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw (begin
+                            (sleep (- 0.033 (ftimer)))
+                            (if mme (mme-write-frame mme fgmmebuf))
+                            (ftimer 'r')))
+                (win-modify Null)
+                (win-clear 
+                 (if mme (copy-memory bufsize bgbufaddr fgbufaddr)))
+                (win-save 
+                 (if mme (copy-memory bufsize fgbufaddr bgbufaddr)))
+                (win-mme 
+                 (begin
+                   (if mme (begin (mme-free-buffer bgmmebuf)
+                                  (mme-free-buffer fgmmebuf)))
+                   (set mme (arg 1))
+                   (set framesize (arg 2))
+                   (set bufsize (* (framesize 0) (framesize 1) 2))
+                   (set fgmmebuf (mme-create-buffer mme-yuv framesize))
+                   (set fgbufaddr (mme-buffer-address fgmmebuf))
+                   (set fgbuf (mme-extract-image mme-yuv 3 
+                                                 framesize fgmmebuf))
+                   (set bgmmebuf (mme-create-buffer mme-yuv framesize))
+                   (set bgbufaddr (mme-buffer-address bgmmebuf))
+                   (set bgbuf (mme-extract-image mme-yuv 3 
+                                                 framesize bgmmebuf))
+                   (image-fill-constant 0 (fgbuf 0))
+                   (image-fill-constant 128 (fgbuf 1))
+                   (image-fill-constant 0 (bgbuf 0))
+                   (image-fill-constant 128 (bgbuf 1))))
+                (win-destroy 
+                 (begin
+                   (mme-free-buffer fgmmebuf)
+                   (mme-free-buffer bgmmebuf)
+                   (set mme Null)))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-mme mme)
+                (win-size framesize)
+                (win-maxsize framesize)
+                (win-buf fgbuf)
+                (win-mmebuf fgmmebuf)
+                (win-mmebufaddr fgbufaddr)
+                (win-bgbuf bgbuf)
+                (win-bgmmebuf bgmmebuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-window-mme-yuv-stream
+  (proc args
+    (local (mme framesize bufsize numbufs curbuf outstanding
+                fgmmebufs fgmmebuf fgbufaddrs fgbufaddr fgbufs
+                fgbuf bgmmebuf bgbufaddr bgbuf ftimer handler)
+      (begin
+        (set mme Null)
+        (set framesize [0 0])
+        (set bufsize 0)
+        (set numbufs 2)
+        (set curbuf 0)
+        (set outstanding 0)
+        (set fgmmebufs Null)
+        (set fgmmebuf Null)
+        (set fgbufaddrs Null)
+        (set fgbufaddr Null)
+        (set fgbufs Null)
+        (set fgbuf Null)
+        (set bgmmebuf Null)
+        (set bgbufaddr Null)
+        (set bgbuf Null)
+        (set ftimer (new-timer))
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (win-draw 
+                 (if mme
+                     (begin
+                       (sleep (- 0.033 (ftimer)))
+                       (mme-write-frame mme fgmmebuf)
+                       (ftimer 'r')
+                       (set outstanding (+ outstanding 1))
+                       (set curbuf (% (+ curbuf 1) numbufs))
+                       (set fgmmebuf (fgmmebufs curbuf))
+                       (set fgbufaddr (fgbufaddrs curbuf))
+                       (set fgbuf (fgbufs curbuf))
+                       (if (= outstanding numbufs)
+                           (begin
+                             (mme-stream-wait-for-buffer mme)
+                             (set outstanding (- outstanding 1)))))))
+                (win-modify Null)
+                (win-clear 
+                 (if mme (copy-memory bufsize bgbufaddr fgbufaddr)))
+                (win-save 
+                 (if mme (copy-memory bufsize fgbufaddr bgbufaddr)))
+                (win-mme 
+                 (begin
+                   (if mme (begin (mme-free-buffer bgmmebuf)
+                                  (map mme-free-buffer fgmmebufs)))
+                   (set mme (arg 1))
+                   (set framesize (arg 2))
+                   (set bufsize (* (framesize 0) (framesize 1) 2))
+                   (set curbuf 0)
+                   (set outstanding 0)
+                   (set fgmmebufs 
+                     (map (proc (x) (mme-create-buffer mme-yuv framesize))
+                          (make-list numbufs Null)))
+                   (map (proc (x) (mme-prepare-buffer mme x)) fgmmebufs)
+                   (set fgbufaddrs (map mme-buffer-address fgmmebufs))
+                   (set fgbufs 
+                     (map (proc (x)
+                            (mme-extract-image mme-yuv 3 framesize x))
+                          fgmmebufs))
+                   (set bgmmebuf (mme-create-buffer mme-yuv framesize))
+                   (set bgbufaddr (mme-buffer-address bgmmebuf))
+                   (set bgbuf (mme-extract-image mme-yuv 3 
+                                                 framesize bgmmebuf))
+                   (map (proc (x) (image-fill-constant 0 (x 0))) fgbufs)
+                   (map (proc (x) (image-fill-constant 128 (x 1))) fgbufs)
+                   (image-fill-constant 0 (bgbuf 0))
+                   (image-fill-constant 128 (bgbuf 1))
+                   (set fgmmebuf (fgmmebufs curbuf))
+                   (set fgbufaddr (fgbufaddrs curbuf))
+                   (set fgbuf (fgbufs curbuf))))
+                (win-destroy 
+                 (begin
+                   (map (proc (x) 
+                          (begin
+                            (mme-unprepare-buffer mme x)
+                            (mme-free-buffer x)))
+                        fgmmebufs)
+                   (mme-free-buffer bgmmebuf)
+                   (set mme Null)))
+                (else (print "Unknown command on window" newline))))
+             (True
+              (switch arg
+                (win-mme mme)
+                (win-size framesize)
+                (win-maxsize framesize)
+                (win-buf fgbuf)
+                (win-mmebuf fgmmebuf)
+                (win-mmebufaddr fgbufaddr)
+                (win-bgbuf bgbuf)
+                (win-bgmmebuf bgmmebuf)
+                (else (print "Unknown query on window" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+############################################################################
+# Actors
+
+# Constants may be 30-99
+
+(set ac-source 30)
+(set ac-frame 31)
+(set ac-srcref 31)
+
+(set ac-scale 32)
+(set ac-mode 33)
+(set ac-position 34)
+
+(set ac-render 38)
+
+(set ac-mode-2d 39)
+(set ac-mode-3d 40)
+
+(set ac-visibility 41)
+
+(set ac-inkmode 45)
+(set ac-ink-transfer 46)
+(set ac-ink-composite 47)
+(set ac-ink-range 48)
+(set ac-ink-jpegalpha 49)
+
+(set ac-mirrorhack 50)  # do not use, will change soon...
+
+(set init-scale-remaps
+  (proc (min max step maxsize)
+    (local (len remaps ct)
+      (begin
+        (set len (+ 1 (/ (- max min) step)))
+        (set remaps (make-list len Null))
+        (set ct (- min step))
+        (if (bound? scale-remaps) (map free scale-remaps))
+        (set scale-remap-min min)
+        (set scale-remap-max max)
+        (set scale-remap-step step)
+        (set remaps (map (proc (x) (set ct (+ ct step))) remaps))
+        (set scale-remaps (map (proc (x) (new-scale-remap x maxsize)) 
+                               remaps))))))
+
+(set get-scale-remap
+  (proc (scale)
+    (scale-remaps (integer (/ (- (+ scale (/ scale-remap-step 2.0))
+                                 scale-remap-min) 
+                              scale-remap-step)))))
+
+(set get-closest-scale
+  (proc (scale)
+    (clamp scale-remap-min scale-remap-max
+           (+ scale-remap-min 
+              (* scale-remap-step 
+                 (integer (/ (- (+ scale (/ scale-remap-step 2.0))
+                                scale-remap-min) 
+                             scale-remap-step)))))))
+
+(init-scale-remaps 0.0 2.0 0.01 640)  # this allows a certain range of scales
+
+# the following sets up remapping arrays for alpha values used in the
+# jpeg alpha ink mode:
+
+(set create-gblist
+  (proc (gain bias)
+    (local (pixlist gainlist ct)
+      (begin
+        (set pixlist (make-list 256 Null))
+        (set gainlist Null)
+        (set ct -1)
+        (set pixlist (map (proc (x) (set ct (+ ct 1))) pixlist))
+        (set gainlist (map (proc (x) (integer (+ (* (real x) gain) bias))) 
+                           pixlist))
+        (set gainlist (map (proc (x) (if (< x 0) 0 (if (> x 255) 255 x)))
+                           gainlist))))))
+
+(set create-gbmap
+  (proc (gain bias)
+    (pack (create-gblist gain bias) c-byte)))
+
+(set gainbias-bytelist
+  (proc (gain bias list)
+    (map (proc (x) (clamp 0 255 (integer (+ bias (* gain x)))))
+         list)))
+
+(set amazon-movie-alpha-blend-range 10)
+(set amazon-movie-alpha-blend-start 15)
+
+(set amazon-movie-alpha-gain (/ 255.0 amazon-movie-alpha-blend-range))
+(set amazon-movie-alpha-bias (* -1.0 (* amazon-movie-alpha-gain 
+                                        amazon-movie-alpha-blend-start)))
+
+(set amazon-movie-alpha-gbmaps 
+  (local (gblist ct gains)
+    (begin
+      (set gblist (create-gblist amazon-movie-alpha-gain
+                                 amazon-movie-alpha-bias))
+      (set ct -4.0)
+      (set gains (make-list 64 Null))
+      (set gains (map (proc (x) (/ (set ct (+ ct 4.0)) 252.0)) gains))
+      (map (proc (gain) (pack (gainbias-bytelist gain 0.0 gblist) c-byte))
+           gains))))
+
+(set amazon-gainmaps
+  (local (pixlist gainlist gainmaps ct)
+    (begin
+      (set pixlist (make-list 256 Null))
+      (set gainlist Null)
+      (set gainmaps Null)
+      (set ct -1)
+      (set pixlist (map (proc (x) (set ct (+ ct 1))) pixlist))
+      (set gainlist (map (proc (x) (/ (real x) 255.0)) pixlist))
+      (set gainmaps (map (proc (gain) 
+                           (map (proc (pix) (integer (* gain pix)))
+                                pixlist))
+                         gainlist))
+      (map (proc (remap) (pack remap c-byte)) gainmaps))))
+
+(set new-actor
+  (proc args
+    (local (source srcref scale actual-scale xremap yremap
+                   mode inkmode position visibility constalpha inbuf
+                   abuf finalscale opfinalscale pastepos finalsize
+                   hotpoint outbuf srcinfo substart subsize subinbuf
+                   subabuf suboutbuf intersect rangelow rangehigh
+                   handler)
+      (begin
+        (set source Null)
+        (set srcref 0)
+        (set scale [1.0 1.0])
+        (set actual-scale [1.0 1.0])
+        (set xremap (get-scale-remap 1.0))
+        (set yremap (get-scale-remap 1.0))
+        (set mode ac-mode-2d)
+        (set inkmode ac-ink-composite)
+        (set position [0 0])
+        (set visibility 1.0)
+        (set constalpha 255)
+        (set inbuf Null)
+        (set abuf Null)
+        (set finalscale [1.0 1.0])
+        (set opfinalscale [1.0 1.0])
+        (set pastepos [0 0])
+        (set finalsize [0 0])
+        (set hotpoint [0 0])
+        (set outbuf Null)
+        (set srcinfo Null)
+        (set substart Null)
+        (set subsize Null)
+        (set subinbuf Null)
+        (set subabuf Null)
+        (set suboutbuf Null)
+        (set intersect Null)
+        (set rangelow 0)
+        (set rangehigh 254)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (ac-source (set source (arg 1)))
+                (ac-srcref (set srcref (arg 1)))
+                (ac-scale (begin
+                            (set scale
+                              (cond
+                               ((list? (arg 1)) (arg 1))
+                               (True [(arg 1) (arg 1)])))
+                            (set actual-scale (map get-closest-scale scale))
+                            (set xremap (get-scale-remap (actual-scale 0)))
+                            (set yremap (get-scale-remap (actual-scale 1)))))
+                (ac-mode (set mode (arg 1)))
+                (ac-inkmode 
+                 (begin
+                   (set inkmode (arg 1))
+                   (switch inkmode
+                     (ac-ink-range 
+                      (if (> (length arg) 2)
+                          (begin
+                            (set rangelow (arg 2))
+                            (set rangehigh (arg 3)))
+                          (begin
+                            (set rangelow 0)   # suitable for ps text
+                            (set rangehigh 254)))))))
+                (ac-position (set position (arg 1)))
+                (ac-visibility 
+                 (begin
+                   (set visibility (real (arg 1)))
+                   (set constalpha (integer (* visibility 255)))))
+                (ac-render
+                 (switch mode
+                   (ac-mode-2d
+                    (begin
+                      (set outbuf (arg 1))
+                      (if (and visibility
+                               (actual-scale 0)
+                               (actual-scale 1)
+                               (set srcinfo 
+                                 (if source (source [src-get srcref]))))
+                          (begin
+                            (set inbuf (srcinfo 0))
+                            (set abuf (srcinfo 1))
+                            (set srcref (srcinfo 2))
+                            (set hotpoint (srcinfo 3))
+                            (set finalscale actual-scale)
+                            (set opfinalscale (/ [1.0 1.0] finalscale))
+                            (set finalsize 
+                              (map integer (* finalscale (inbuf buf-dims))))
+                            (set pastepos (- position 
+                                             (* finalscale hotpoint)))
+                            (set intersect (intersect-rectangles 
+                                            pastepos finalsize 
+                                            (outbuf buf-dims)))
+                            (set substart (* opfinalscale (intersect 0)))
+                            (set subsize (* opfinalscale (intersect 2)))
+                            (set subinbuf 
+                              (isolate-sub-image substart subsize inbuf))
+                            (if abuf 
+                                (set subabuf 
+                                  (isolate-sub-image substart subsize abuf)))
+                            (set suboutbuf 
+                              (isolate-sub-image
+                               (intersect 1) (intersect 2) outbuf))
+                            (if (= finalscale [1.0 1.0])
+                                (switch inkmode
+                                  (ac-ink-composite
+                                   (if abuf
+                                       (if (= visibility 1.0)
+                                           (image-composite 
+                                            subinbuf subabuf suboutbuf)
+                                           (image-composite-remapalpha
+                                            (amazon-gainmaps constalpha)
+                                            subinbuf subabuf suboutbuf))
+                                       (if (= visibility 1.0)
+                                           (image-transfer 
+                                            subinbuf suboutbuf)
+                                           (image-composite-constalpha 
+                                            constalpha subinbuf 
+                                            suboutbuf))))
+                                  (ac-ink-jpegalpha
+                                   (if abuf
+                                       (image-composite-remapalpha
+                                        (amazon-movie-alpha-gbmaps 
+                                         (/ constalpha 4))
+                                        subinbuf subabuf suboutbuf)
+                                       (if (= visibility 1.0)
+                                           (image-transfer 
+                                            subinbuf suboutbuf)
+                                           (image-composite-constalpha 
+                                            constalpha 
+                                            subinbuf suboutbuf))))
+                                  (ac-ink-transfer
+                                   (image-transfer subinbuf suboutbuf))
+                                  (ac-ink-range
+                                   (image-transfer-range
+                                    rangelow rangehigh subinbuf suboutbuf)))
+                                (switch inkmode   ### must scale....
+                                  (ac-ink-composite
+                                   (if abuf
+                                       (if (= visibility 1.0)
+                                           (image-scale-composite 
+                                            subinbuf subabuf
+                                            suboutbuf xremap yremap)
+                                           (image-scale-composite-remapalpha
+                                            (amazon-gainmaps constalpha)
+                                            subinbuf subabuf
+                                            suboutbuf xremap yremap))
+                                       (if (= visibility 1.0)
+                                           (image-scale 
+                                            subinbuf suboutbuf 
+                                            xremap yremap)
+                                           (image-scale-composite-constalpha 
+                                            constalpha subinbuf suboutbuf
+                                            xremap yremap))))
+                                  (ac-ink-jpegalpha
+                                   (if abuf
+                                       (image-scale-composite-remapalpha
+                                        (amazon-movie-alpha-gbmaps 
+                                         (/ constalpha 4))
+                                        subinbuf subabuf suboutbuf 
+                                        xremap yremap)
+                                       (if (= visibility 1.0)
+                                           (image-scale 
+                                            subinbuf suboutbuf 
+                                            xremap yremap)
+                                           (image-scale-composite-constalpha 
+                                            constalpha subinbuf suboutbuf
+                                            xremap yremap))))
+                                  (ac-ink-transfer
+                                   (image-scale 
+                                    subinbuf suboutbuf xremap yremap))
+                                  (ac-ink-range
+                                   (image-scale-range
+                                    rangelow rangehigh
+                                    subinbuf suboutbuf xremap yremap))))
+                            [(intersect 1) (intersect 2)])
+                          Null)))
+                   (else (print "Unknown rendering mode" newline))))
+                (else (print "Unknown command on actor" newline))))
+             (True
+              (switch arg
+                (ac-source source)
+                (ac-srcref srcref)
+                (ac-scale scale)
+                (ac-mode mode)
+                (ac-inkmode inkmode)
+                (ac-visibility visibility)
+                (ac-position position)
+                (else (print "Unknown query on actor" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-actor-yuv
+  (proc args
+    (local (source srcref scale actual-scale xremap yremap
+                   mode inkmode position visibility constalpha inbuf
+                   inybuf inuvbuf abuf finalscale opfinalscale
+                   pastepos finalsize hotpoint outbuf outybuf
+                   outuvbuf srcinfo instart outystart outuvstart
+                   outysize outuvsize subystart subysize subuvstart
+                   subuvsize subinybuf subinuvbuf subabuf subabufh2
+                   suboutybuf suboutuvbuf intersect rangelow
+                   rangehigh mirrorhack handler)
+      (begin
+        (set source Null)
+        (set srcref 0)
+        (set scale [1.0 1.0])
+        (set actual-scale [1.0 1.0])
+        (set xremap (get-scale-remap 1.0))
+        (set yremap (get-scale-remap 1.0))
+        (set mode ac-mode-2d)
+        (set inkmode ac-ink-composite)
+        (set position [0 0])
+        (set visibility 1.0)
+        (set constalpha 255)
+        (set inbuf Null)
+        (set inybuf Null)
+        (set inuvbuf Null)
+        (set abuf Null)
+        (set finalscale [1.0 1.0])
+        (set opfinalscale [1.0 1.0])
+        (set pastepos [0 0])
+        (set finalsize [0 0])
+        (set hotpoint [0 0])
+        (set outbuf Null)
+        (set outybuf Null)
+        (set outuvbuf Null)
+        (set srcinfo Null)
+        (set instart Null)
+        (set outystart Null)
+        (set outuvstart Null)
+        (set outysize Null)
+        (set outuvsize Null)
+        (set subystart Null)
+        (set subysize Null)
+        (set subuvstart Null)
+        (set subuvsize Null)
+        (set subinybuf Null)
+        (set subinuvbuf Null)
+        (set subabuf Null)
+        (set subabufh2 Null)
+        (set suboutybuf Null)
+        (set suboutuvbuf Null)
+        (set intersect Null)
+        (set rangelow 0)
+        (set rangehigh 254)
+        (set mirrorhack False)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (ac-source (set source (arg 1)))
+                (ac-srcref (set srcref (arg 1)))
+                (ac-scale (begin
+                            (set scale
+                              (cond
+                               ((list? (arg 1)) (arg 1))
+                               (True [(arg 1) (arg 1)])))
+                            (set actual-scale (map get-closest-scale scale))
+                            (set xremap (get-scale-remap (actual-scale 0)))
+                            (set yremap (get-scale-remap (actual-scale 1)))))
+                (ac-mode (set mode (arg 1)))
+                (ac-inkmode 
+                 (begin
+                   (set inkmode (arg 1))
+                   (switch inkmode
+                     (ac-ink-range 
+                      (if (> (length arg) 2)
+                          (begin
+                            (set rangelow (arg 2))
+                            (set rangehigh (arg 3)))
+                          (begin
+                            (set rangelow 0)    # suitable for ps text
+                            (set rangehigh 254)))))))
+                (ac-position (set position (arg 1)))
+                (ac-visibility 
+                 (begin
+                   (set visibility (real (arg 1)))
+                   (set constalpha (integer (* visibility 255)))))
+                (ac-mirrorhack (set mirrorhack (arg 1)))
+                (ac-render
+                 (switch mode
+                   (ac-mode-2d
+                    (begin
+                      (set outbuf (arg 1))
+                      (if (and visibility
+                               (actual-scale 0)
+                               (actual-scale 1)
+                               (set srcinfo 
+                                 (if source (source [src-get srcref]))))
+                          (begin
+                            (set inbuf (srcinfo 0))
+                            (set abuf (srcinfo 1))
+                            (set srcref (srcinfo 2))
+                            (set hotpoint (srcinfo 3))
+                            (set inybuf (inbuf 0))
+                            (set inuvbuf (inbuf 1))
+                            (set outybuf (outbuf 0))
+                            (set outuvbuf (outbuf 1))
+                            (if mirrorhack  # this is a hack, do not use!
+                                (begin
+                                  (set inybuf 
+                                    (horizontal-mirror-image inybuf))
+                                  (set inuvbuf 
+                                    (horizontal-mirror-image inuvbuf))
+                                  (set abuf
+                                    (horizontal-mirror-image abuf))))
+                            (set finalscale actual-scale)
+                            (set opfinalscale (/ [1.0 1.0] finalscale))
+                            (set finalsize (map integer
+                                                (* finalscale 
+                                                   (inybuf buf-dims))))
+                            (set pastepos (- position 
+                                             (* finalscale hotpoint)))
+                            (set intersect (intersect-rectangles 
+                                            pastepos 
+                                            finalsize 
+                                            (outybuf buf-dims)))
+                            (set instart (intersect 0))
+                            (set outystart (intersect 1))
+                            (set outuvstart (/ outystart [2 1]))
+                            (set outysize (intersect 2))
+                            (set outuvsize (/ outysize [2 1]))
+                            (set subystart (* opfinalscale instart))
+                            (set subysize (* opfinalscale outysize))
+                            (set subuvstart (/ subystart [2 1]))
+                            (set subuvsize (/ subysize [2 1]))
+                            (set subinybuf 
+                              (isolate-sub-image 
+                               subystart subysize inybuf))
+                            (set subinuvbuf 
+                              (isolate-sub-image 
+                               subuvstart subuvsize inuvbuf))
+                            (if abuf (set subabufh2
+                                       (subsample-image 
+                                        [2 1]
+                                        (set subabuf 
+                                          (isolate-sub-image 
+                                           subystart subysize abuf)))))
+                            (set suboutybuf 
+                              (isolate-sub-image
+                               outystart outysize outybuf))
+                            (set suboutuvbuf 
+                              (isolate-sub-image
+                               outuvstart outuvsize outuvbuf))
+                            (if (= finalscale [1.0 1.0])
+                                (switch inkmode
+                                  (ac-ink-composite
+                                   (if abuf
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-composite 
+                                              subinybuf subabuf suboutybuf)
+                                             (image-composite 
+                                              subinuvbuf 
+                                              subabufh2 suboutuvbuf))
+                                           (begin
+                                             (image-composite-remapalpha
+                                              (amazon-gainmaps constalpha)
+                                              subinybuf subabuf suboutybuf)
+                                             (image-composite-remapalpha
+                                              (amazon-gainmaps constalpha)
+                                              subinuvbuf 
+                                              subabufh2 suboutuvbuf)))
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-transfer 
+                                              subinybuf suboutybuf)
+                                             (image-transfer 
+                                              subinuvbuf suboutuvbuf))
+                                           (begin
+                                             (image-composite-constalpha 
+                                              constalpha subinybuf 
+                                              suboutybuf)
+                                             (image-composite-constalpha 
+                                              constalpha subinuvbuf 
+                                              suboutuvbuf)))))
+                                  (ac-ink-jpegalpha
+                                   (if abuf
+                                       (begin
+                                         (image-composite-remapalpha
+                                          (amazon-movie-alpha-gbmaps 
+                                           (/ constalpha 4))
+                                          subinybuf subabuf suboutybuf)
+                                         (image-composite-remapalpha
+                                          (amazon-movie-alpha-gbmaps 
+                                           (/ constalpha 4))
+                                          subinuvbuf subabufh2 suboutuvbuf))
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-transfer 
+                                              subinybuf suboutybuf)
+                                             (image-transfer 
+                                              subinuvbuf suboutuvbuf))
+                                           (begin
+                                             (image-composite-constalpha 
+                                              constalpha 
+                                              subinybuf suboutybuf)
+                                             (image-composite-constalpha 
+                                              constalpha 
+                                              subinuvbuf suboutuvbuf)))))
+                                  (ac-ink-transfer
+                                   (begin
+                                     (image-transfer 
+                                      subinybuf suboutybuf)
+                                     (image-transfer 
+                                      subinuvbuf suboutuvbuf)))
+                                  (ac-ink-range
+                                   (begin
+                                     (image-transfer-range
+                                      rangelow rangehigh 
+                                      subinybuf suboutybuf)
+                                     (image-transfer-range
+                                      rangelow rangehigh 
+                                      subinuvbuf suboutuvbuf))))
+                                (switch inkmode   ### must scale....
+                                  (ac-ink-composite
+                                   (if abuf
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-scale-composite 
+                                              subinybuf subabuf
+                                              suboutybuf xremap yremap)
+                                             (image-scale-composite 
+                                              subinuvbuf subabufh2
+                                              suboutuvbuf xremap yremap))
+                                           (begin
+                                             (image-scale-composite-remapalpha
+                                              (amazon-gainmaps constalpha)
+                                              subinybuf subabuf
+                                              suboutybuf xremap yremap)
+                                             (image-scale-composite-remapalpha
+                                              (amazon-gainmaps constalpha)
+                                              subinuvbuf subabufh2
+                                              suboutuvbuf xremap yremap)))
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-scale 
+                                              subinybuf suboutybuf 
+                                              xremap yremap)
+                                             (image-scale 
+                                              subinuvbuf suboutuvbuf 
+                                              xremap yremap))
+                                           (begin
+                                             (image-scale-composite-constalpha 
+                                              constalpha 
+                                              subinybuf suboutybuf
+                                              xremap yremap)
+                                             (image-scale-composite-constalpha 
+                                              constalpha 
+                                              subinuvbuf suboutuvbuf
+                                              xremap yremap)))))
+                                  (ac-ink-jpegalpha
+                                   (if abuf
+                                       (begin
+                                         (image-scale-composite-remapalpha
+                                          (amazon-movie-alpha-gbmaps 
+                                           (/ constalpha 4))
+                                          subinybuf subabuf suboutybuf 
+                                          xremap yremap)
+                                         (image-scale-composite-remapalpha
+                                          (amazon-movie-alpha-gbmaps 
+                                           (/ constalpha 4))
+                                          subinuvbuf subabufh2 suboutuvbuf 
+                                          xremap yremap))
+                                       (if (= visibility 1.0)
+                                           (begin
+                                             (image-scale 
+                                              subinybuf suboutybuf 
+                                              xremap yremap)
+                                             (image-scale 
+                                              subinuvbuf suboutuvbuf 
+                                              xremap yremap))
+                                           (begin
+                                             (image-scale-composite-constalpha 
+                                              constalpha 
+                                              subinybuf suboutybuf
+                                              xremap yremap)
+                                             (image-scale-composite-constalpha 
+                                              constalpha
+                                              subinuvbuf suboutuvbuf
+                                              xremap yremap)))))
+                                  (ac-ink-transfer
+                                   (begin
+                                     (image-scale 
+                                      subinybuf suboutybuf 
+                                      xremap yremap)
+                                     (image-scale 
+                                      subinuvbuf suboutuvbuf 
+                                      xremap yremap)))
+                                  (ac-ink-range
+                                   (begin
+                                     (image-scale-range
+                                      rangelow rangehigh
+                                      subinybuf suboutybuf 
+                                      xremap yremap)
+                                     (image-scale-range
+                                      rangelow rangehigh
+                                      subinuvbuf suboutuvbuf 
+                                      xremap yremap)))))
+                            [outystart outysize outuvstart outuvsize])
+                          Null)))
+                   (else (print "Unknown rendering mode" newline))))
+                (else (print "Unknown command on actor" newline))))
+             (True
+              (switch arg
+                (ac-source source)
+                (ac-srcref srcref)
+                (ac-scale scale)
+                (ac-mode mode)
+                (ac-inkmode inkmode)
+                (ac-visibility visibility)
+                (ac-position position)
+                (else (print "Unknown query on actor" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+############################################################################
+# Media sources
+
+# Constants may be 100-199
+
+(set src-get 100)
+(set src-buf 101)
+(set src-abuf 102)
+(set src-ref 103)
+(set src-hotpoint 104)
+(set src-scale 105)
+
+(set src-url 110)
+(set src-movie 111)
+(set src-mme 112)
+(set src-size 113)
+(set src-usealpha 114)
+
+(set src-put 115)
+(set src-yuv 116)
+
+(set src-handle 120)
+(set src-height 121)
+(set src-text 122)
+(set src-font 123)
+(set src-quality 124)
+(set src-color 125)
+
+(set src-destroy 129)
+
+(set new-source-url
+  (proc args
+    (local (curbufs curabufs origbufs curref hotpoint url
+                    numframes handler)
+      (begin
+        (set curbufs Null)
+        (set curabufs Null)
+        (set origbufs Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set url Null)
+        (set numframes 0)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get 
+                 (begin
+                   (set curref (% (arg 1) numframes))
+                   (if curbufs [(curbufs curref) (curabufs curref) 
+                                curref hotpoint])))
+                (src-url
+                 (begin 
+                   (set url (arg 1))
+                   (if origbufs (map free-image origbufs))
+                   (set origbufs Null)
+                   (set origbufs (retrieve-url-image-sequence url))
+                   (set numframes (length origbufs))
+                   (set curbufs origbufs)
+                   (set curabufs 
+                     (map (proc (curbuf)
+                            (switch (curbuf buf-chans)
+                              (1 Null)
+                              (2 (isolate-channel 1 curbuf))
+                              (3 Null)
+                              (4 (isolate-channel 3 curbuf))))
+                          curbufs))
+                   (set curbufs 
+                     (map (proc (curbuf)
+                            (switch (curbuf buf-chans)
+                              (1 (combine-channels curbuf curbuf curbuf))
+                              (2 (combine-channels (isolate-channel 0 curbuf)
+                                                   (isolate-channel 0 curbuf)
+                                                   (isolate-channel 0 curbuf)))
+                              (3 curbuf)
+                              (4 (isolate-channels 0 2 curbuf))))
+                          curbufs))
+                   (set hotpoint (/ ((curbufs 0) buf-dims) [2 2]))
+                   [curbufs curabufs]))
+                (src-destroy (if origbufs (map free-image origbufs)))
+                (else (print "Unknown command on url source" newline))))
+             (True
+              (switch arg
+                (src-buf (curbufs curref))
+                (src-abuf (curabufs curref))
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-yuv False)
+                (src-url url)
+                (src-size ((curbufs curref) buf-dims))
+                (else (print "Unknown query on url source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-url-yuv
+  (proc args
+    (local (curbufs origbufs yuvbufs curabufs curref hotpoint
+                    url numframes handler)
+      (begin
+        (set curbufs Null)
+        (set origbufs Null)
+        (set yuvbufs Null)
+        (set curabufs Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set url Null)
+        (set numframes 0)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get 
+                 (begin
+                   (set curref (% (arg 1) numframes))
+                   (if yuvbufs [(yuvbufs curref) (curabufs curref) 
+                                curref hotpoint])))
+                (src-url
+                 (begin 
+                   (set url (arg 1))
+                   (if yuvbufs (map (proc (yuvbuf)
+                                      (begin
+                                        (free-image (yuvbuf 0))
+                                        (free-image (yuvbuf 1))))
+                                    yuvbufs))
+                   (set yuvbufs Null)
+                   (if curabufs (map (proc (x) (if x (free-image x))) 
+                                     curabufs))
+                   (set curabufs Null)
+                   (set origbufs (retrieve-url-image-sequence url))
+                   (set numframes (length origbufs))
+                   (set curbufs origbufs)
+                   (set curabufs 
+                     (map (proc (curbuf)
+                            (switch (curbuf buf-chans)
+                              (1 Null)
+                              (2 (isolate-channel 1 curbuf))
+                              (3 Null)
+                              (4 (isolate-channel 3 curbuf))))
+                          curbufs))
+                   (set curbufs 
+                     (map (proc (curbuf)
+                            (switch (curbuf buf-chans)
+                              (1 (combine-channels curbuf curbuf curbuf))
+                              (2 (combine-channels (isolate-channel 0 curbuf)
+                                                   (isolate-channel 0 curbuf)
+                                                   (isolate-channel 0 curbuf)))
+                              (3 curbuf)
+                              (4 (isolate-channels 0 2 curbuf))))
+                          curbufs))
+                   (set hotpoint (/ ((curbufs 0) buf-dims) [2 2]))
+                   (set yuvbufs (map image-color-rgb-to-yuv curbufs))
+                   (set curabufs 
+                     (map (proc (curabuf) (if curabuf (image-copy curabuf)))
+                          curabufs))
+                   (map free-image origbufs)
+                   [yuvbufs curabufs]))
+                (src-destroy 
+                 (begin
+                   (if yuvbufs (map (proc (yuvbuf)
+                                      (begin
+                                        (free-image (yuvbuf 0))
+                                        (free-image (yuvbuf 1))))
+                                    yuvbufs))
+                   (set yuvbufs Null)
+                   (if curabufs (map free-image curabufs))
+                   (set curabufs Null)))
+                (else (print "Unknown command on url source" newline))))
+             (True
+              (switch arg
+                (src-buf (yuvbufs curref))
+                (src-abuf (curabufs curref))
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-yuv True)
+                (src-url url)
+                (src-size (((yuvbufs curref) 0) buf-dims))
+                (else (print "Unknown query on url source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-url-old
+  (proc args
+    (local (curbuf curabuf origbuf curref hotpoint url
+                   handler)
+      (begin
+        (set curbuf Null)
+        (set curabuf Null)
+        (set origbuf Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set url Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get (if curbuf [curbuf curabuf curref hotpoint]))
+                (src-url
+                 (begin 
+                   (set url (arg 1))
+                   (if origbuf (free-image origbuf))
+                   (set origbuf (retrieve-url-image url))
+                   (set curbuf origbuf)
+                   (switch (curbuf buf-chans)
+                     (1 (begin
+                          (set curabuf Null)
+                          (set curbuf (combine-channels curbuf curbuf curbuf))))
+                     (2 (begin
+                          (set curabuf (isolate-channel 1 curbuf))
+                          (set curbuf
+                            (combine-channels (isolate-channel 0 curbuf)
+                                              (isolate-channel 0 curbuf)
+                                              (isolate-channel 0 curbuf)))))
+                     (3 (set curabuf Null))
+                     (4 (begin
+                          (set curabuf (isolate-channel 3 curbuf))
+                          (set curbuf (isolate-channels 0 2 curbuf)))))
+                   (set hotpoint (/ (curbuf buf-dims) [2 2]))
+                   [curbuf curabuf]))
+                (src-destroy (if origbuf (free-image origbuf)))
+                (else (print "Unknown command on url source" newline))))
+             (True
+              (switch arg
+                (src-buf curbuf)
+                (src-abuf curabuf)
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-yuv False)
+                (src-url url)
+                (src-size (curbuf buf-dims))
+                (else (print "Unknown query on url source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-url-yuv-old
+  (proc args
+    (local (curbuf origbuf yuvbuf curabuf curref hotpoint url
+                   handler)
+      (begin
+        (set curbuf Null)
+        (set origbuf Null)
+        (set yuvbuf Null)
+        (set curabuf Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set url Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get (if yuvbuf [yuvbuf curabuf curref hotpoint]))
+                (src-url
+                 (begin 
+                   (set url (arg 1))
+                   (if yuvbuf (begin
+                                (free-image (yuvbuf 0))
+                                (free-image (yuvbuf 1))))
+                   (if curabuf (free-image curabuf))
+                   (set origbuf (retrieve-url-image url))
+                   (set curbuf origbuf)
+                   (switch (curbuf buf-chans)
+                     (1 (begin
+                          (set curabuf Null)
+                          (set curbuf (combine-channels curbuf curbuf curbuf))))
+                     (2 (begin
+                          (set curabuf (isolate-channel 1 curbuf))
+                          (set curbuf
+                            (combine-channels (isolate-channel 0 curbuf)
+                                              (isolate-channel 0 curbuf)
+                                              (isolate-channel 0 curbuf)))))
+                     (3 (set curabuf Null))
+                     (4 (begin
+                          (set curabuf (isolate-channel 3 curbuf))
+                          (set curbuf (isolate-channels 0 2 curbuf)))))
+                   (set hotpoint (/ (curbuf buf-dims) [2 2]))
+                   (set yuvbuf (image-color-rgb-to-yuv curbuf))
+                   (if curabuf (set curabuf (image-copy curabuf)))
+                   (free-image origbuf)
+                   [yuvbuf curabuf]))
+                (src-destroy 
+                 (begin
+                   (if yuvbuf (begin
+                                (free-image (yuvbuf 0))
+                                (free-image (yuvbuf 1))))
+                   (if curabuf (free-image curabuf))))
+                (else (print "Unknown command on url source" newline))))
+             (True
+              (switch arg
+                (src-buf yuvbuf)
+                (src-abuf curabuf)
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-yuv True)
+                (src-url url)
+                (src-size ((yuvbuf 0) buf-dims))
+                (else (print "Unknown query on url source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-movie
+  (proc args
+    (local (curbuf curabuf curref hotpoint movie usealpha mme
+                   mmesize mmejpegbuf mmeyuvbuf yuvbuf mmergbbuf
+                   handler)
+      (begin
+        (set curbuf Null)
+        (set curabuf Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set movie Null)
+        (set usealpha False)
+        (set mme Null)
+        (set mmesize [0 0])
+        (set mmejpegbuf Null)
+        (set mmeyuvbuf Null)
+        (set yuvbuf Null)
+        (set mmergbbuf Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get 
+                 (if (and mme movie)
+                     (begin
+                       (if (!= (arg 1) curref)
+                           (begin
+                             (movie [im-decompress mme mmejpegbuf mmeyuvbuf 
+                                     (set curref (arg 1))])
+                             (mme-yuv-to-rgb mmesize mmeyuvbuf mmergbbuf)))
+                       (if usealpha
+                           [curbuf curabuf curref hotpoint]
+                           [curbuf Null curref hotpoint]))))
+                (src-movie (begin
+                             (set curref -1)
+                             (set movie (arg 1))))
+                (src-usealpha (set usealpha (arg 1)))
+                (src-mme
+                 (begin 
+                   (set mme (arg 1))
+                   (set mmesize (arg 2))
+                   (set mmejpegbuf (arg 3))
+                   (set mmeyuvbuf (arg 4))
+                   (set mmergbbuf (arg 5))
+                   (set curbuf (mme-extract-image mme-rgb 3 
+                                                  mmesize mmergbbuf))
+                   (set yuvbuf (mme-extract-image mme-yuv 2 
+                                                  mmesize mmeyuvbuf))
+                   (set curabuf (yuvbuf 0))
+                   (set hotpoint (/ (curbuf buf-dims) [2 2]))
+                   curbuf))
+                (else (print "Unknown command on movie source " 
+                             arg newline))))
+             (True
+              (switch arg
+                (src-buf curbuf)
+                (src-abuf curabuf)
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-usealpha usealpha)
+                (src-movie movie)
+                (src-yuv False)
+                (src-mme [mme mmesize mmejpegbuf mmeyuvbuf mmergbbuf])
+                (src-size mmesize)
+                (else (print "Unknown query on movie source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-movie-yuv
+  (proc args
+    (local (curbuf curabuf curref hotpoint movie usealpha mme
+                   mmesize mmejpegbuf mmeyuvbuf yuvbuf handler)
+      (begin
+        (set curbuf Null)
+        (set curabuf Null)
+        (set curref 0)
+        (set hotpoint [0 0])
+        (set movie Null)
+        (set usealpha False)
+        (set mme Null)
+        (set mmesize [0 0])
+        (set mmejpegbuf Null)
+        (set mmeyuvbuf Null)
+        (set yuvbuf Null)
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get 
+                 (if (and mme movie)
+                     (begin
+                       (if (!= (arg 1) curref)
+                           (movie [im-decompress mme mmejpegbuf mmeyuvbuf 
+                                   (set curref (arg 1))]))
+                       (if usealpha
+                           [yuvbuf curabuf curref hotpoint]
+                           [yuvbuf Null curref hotpoint]))))
+                (src-movie (begin
+                             (set curref -1)
+                             (set movie (arg 1))))
+                (src-usealpha (set usealpha (arg 1)))
+                (src-mme
+                 (begin 
+                   (set mme (arg 1))
+                   (set mmesize (arg 2))
+                   (set mmejpegbuf (arg 3))
+                   (set mmeyuvbuf (arg 4))
+                   (set yuvbuf (mme-extract-image mme-yuv 3 
+                                                  mmesize mmeyuvbuf))
+                   (set curabuf (yuvbuf 0))
+                   (set hotpoint (/ mmesize [2 2]))
+                   yuvbuf))
+                (else (print "Unknown command on movie source" newline))))
+             (True
+              (switch arg
+                (src-buf yuvbuf)
+                (src-abuf curabuf)
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-usealpha usealpha)
+                (src-movie movie)
+                (src-yuv True)
+                (src-mme [mme mmesize mmejpegbuf mmeyuvbuf])
+                (src-size mmesize)
+                (else (print "Unknown query on movie source" newline)))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-image-buffer
+  (proc args
+    (local (curbuf curabuf curref yuv hotpoint handler)
+      (begin
+        (set curbuf Null)
+        (set curabuf Null)
+        (set curref 0)
+        (set yuv False)
+        (set hotpoint [0 0])
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get (if curbuf
+                             [curbuf curabuf curref hotpoint]))
+                (src-put (begin (set curbuf (arg 1))
+                                (set curabuf (arg 2))
+                                (set curref (arg 3))
+                                (set hotpoint (arg 4))))
+                (src-buf (set curbuf (arg 1)))
+                (src-abuf (set curabuf (arg 1)))
+                (src-ref (set curref (arg 1)))
+                (src-yuv (set yuv (arg 1)))
+                (src-hotpoint (set hotpoint (arg 1)))
+                (src-destroy Null)
+                (else (print "Unknown command on image buffer source\n"))))
+             (True
+              (switch arg
+                (src-buf curbuf)
+                (src-abuf curabuf)
+                (src-ref curref)
+                (src-hotpoint hotpoint)
+                (src-yuv yuv)
+                (src-size (if curbuf (if yuv ((curbuf 0) buf-dims) 
+                                         (curbuf buf-dims))))
+                (else (print "Unknown query on image buffer source")))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set new-source-text
+  (proc args
+    (local (curbuf curabuf curref yuv hotpoint changed
+                   color-changed ps-handle height text font quality
+                   color bufsize update handler)
+      (begin
+        (set curbuf Null)
+        (set curabuf Null)
+        (set curref 0)
+        (set yuv False)
+        (set hotpoint [0 0])
+        (set changed True)
+        (set color-changed True)
+        (set ps-handle Null)
+        (set height 20)
+        (set text "Text")
+        (set font "Times")
+        (set quality 3)
+        (set color [255 255 255])
+        (set bufsize Null)
+        (set update
+          (proc ()
+            (begin
+              (if (and changed ps-handle)
+                  (begin
+                    (if curabuf (free-image curabuf))
+                    (set curabuf (ps-best-text ps-handle text height 
+                                               font quality))
+                    (set bufsize (curabuf buf-dims))
+                    (if curbuf (if yuv 
+                                   (map free-image curbuf) 
+                                   (free-image curbuf)))
+                    (if yuv
+                        (set curbuf (new-yuv-image bufsize))
+                        (set curbuf (new-standard-image 3 bufsize)))
+                    (set color-changed True)
+                    (set changed False)))
+              (if (and color-changed curbuf)
+                  (begin
+                    (if yuv 
+                        (begin 
+                          (image-fill-constant (color 0) (curbuf 0))
+                          (image-fill-constant (color 1) 
+                                               (isolate-channel 0 (curbuf 1)))
+                          (image-fill-constant (color 2) 
+                                               (isolate-channel 1 (curbuf 1))))
+                        (begin
+                          (image-fill-constant (color 0) 
+                                               (isolate-channel 0 curbuf))
+                          (image-fill-constant (color 1) 
+                                               (isolate-channel 1 curbuf))
+                          (image-fill-constant (color 2) 
+                                               (isolate-channel 2 curbuf))))
+                    (set color-changed False))))))
+        (set handler 
+          (proc (arg)
+            (cond
+             ((list? arg)
+              (switch (arg 0)
+                (src-get 
+                 (begin (update)
+                        (if curbuf [curbuf curabuf curref hotpoint])))
+                (src-yuv (begin (set yuv (arg 1))
+                                (set changed True)))
+                (src-handle (set ps-handle (arg 1)))
+                (src-height (begin (set height (arg 1))
+                                   (set changed True)))
+                (src-text (begin (set text (arg 1))
+                                 (set changed True)))
+                (src-font (begin (set font (arg 1))
+                                 (set changed True)))
+                (src-quality (begin (set quality (arg 1))
+                                    (set changed True)))
+                (src-color (begin (set color (arg 1))
+                                  (set color-changed True)))
+                (src-destroy (begin
+                               (if curbuf
+                                   (if yuv 
+                                       (map free-image curbuf)
+                                       (free-image curbuf)))
+                               (if curabuf (free-image curabuf))))
+                (else (print "Unknown command on text source\n"))))
+             (True
+              (switch arg
+                (src-buf (begin (update) curbuf))
+                (src-abuf (begin (update) curabuf))
+                (src-ref (begin (update) curref))
+                (src-hotpoint (begin (update) hotpoint))
+                (src-yuv yuv)
+                (src-handle ps-handle)
+                (src-text text)
+                (src-font font)
+                (src-quality quality)
+                (src-color color)
+                (src-size (begin (update) bufsize))
+                (else (print "Unknown query on text source")))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+

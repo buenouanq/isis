@@ -1,0 +1,324 @@
+###########################################################################
+### isis computerfone interface routines
+### written by ann bui, cleaned up by stefan agamanolis
+###########################################################################
+
+(set phone-buf-len 256)
+
+(set phone-inbuf (malloc phone-buf-len))
+(set phone-outbuf (malloc phone-buf-len))
+
+###########################################################################
+# Initializes communication with the computerfone.
+
+(set phone-initialize
+  (proc args
+    (local (device-name baud port)
+      (begin
+        (set device-name (args 0))
+        (set baud (if (> (length args) 1) (args 1) tty-b9600))
+        (set port (open-update device-name))
+        (set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl) 0
+                      baud baud)
+        (phone-flush-port port)
+        (set com ">XX\r")
+        (set len (length com))
+        (pack com c-char len phone-outbuf)
+        (set num-bytes (* len c-char-size))
+        (write-raw port num-bytes phone-outbuf)
+        port))))
+
+###########################################################################
+# Flush the port and returns string of what was flushed...
+
+(set phone-flush-port
+  (proc (port)
+    (local (i)
+      (begin
+        (set i 0)
+        (while (pending port) 
+          (begin
+            (read-raw port 1 (+ phone-inbuf i))
+            (set i (+ i 1))))
+        (if i (phone-inbuf [c-char i])) []))))
+
+###########################################################################
+# Read a certain number of bytes from the device...
+
+(set phone-read
+  (proc (port num)
+    (begin
+      (read-raw port num phone-inbuf)
+      (phone-inbuf [c-char num]))))
+
+(set phone-write write-string)
+
+###########################################################################
+# Reset touch-tone input (clears buffer)
+
+(set phone-reset-tone-input
+  (proc (port)
+    (begin
+      (phone-flush-port port)
+      (write-string port ">XI\r")
+      (read-string port))))
+
+(set phone-tone-input-timeout
+  (proc (port sec)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">CT" (uneval (integer sec)) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Start numeric input--expects 'numitems' numbers, returns string
+
+(set phone-receive-num-input
+  (proc (port numitems)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">IN" (uneval numitems) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Start alphanumeric input--expects 'numitems' numbers, returns string
+
+(set phone-receive-alphanum-input
+  (proc (port numitems)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">IA" (uneval numitems) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Stops touch-tone input
+
+(set phone-stop-tone-input
+  (proc (port)
+    (local (com len)
+      (begin
+        (set com "")
+        (set len 0)
+        (phone-flush-port port)
+        (write-string port ">K\r")
+        (read-string port)))))
+
+###########################################################################
+# Touch-tone output of a character, duration in seconds.
+
+(set phone-tone-output
+  (proc (port char duration)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">TT" 
+                                 char 
+                                 (clamp 0 254
+                                        (integer (/ (- (real duration) 0.1) 
+                                                    0.1)))
+                                 "\r"))
+      (read-string port))))
+
+
+###########################################################################
+# Dial number (passed as string)
+
+(set phone-tone-dial
+  (proc (port number)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">DT" number "\r"))
+      (read-string port))))
+
+(set phone-pulse-dial
+  (proc (port number)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">DP" number "\r"))
+      (read-string port))))
+
+###########################################################################
+# Turns on/off auto dial
+
+(set phone-auto-dial
+  (proc (port flag)
+    (begin
+      (phone-flush-port port)
+      (write-string port (if flag ">DA0\r" ">DA1\r"))
+      (read-string port))))
+
+###########################################################################
+# Ring count before hangup on outgoing calls
+
+(set phone-outgoing-ring-count
+  (proc (port rings)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">DA2" (uneval rings) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Return phone status (integer between 0 and 9--see manual)
+
+(set phone-status
+  (proc (port)
+    (begin
+      (phone-flush-port port)
+      (write-string port ">Q1\r")
+      (eval [((read-string port) 2)]))))
+
+###########################################################################
+# Go off hook or hang up
+
+(set phone-off-hook
+  (proc (port)
+    (begin
+      (phone-flush-port port)
+      (write-string port ">O\r")
+      (read-string port))))
+
+(set phone-hang-up
+  (proc (port)
+    (begin
+      (phone-flush-port port)
+      (write-string port ">H\r")
+      (read-string port))))
+
+###########################################################################
+# Turn on/off auto-answer mode
+
+(set phone-answer-mode
+  (proc (port flag)
+    (begin
+      (phone-flush-port port)
+      (write-string port (if flag ">A1\r" ">A0\r"))
+      (read-string port))))
+
+###########################################################################
+# Set ring count before answer
+
+(set phone-ring-count
+  (proc (port rings)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">A3" (uneval rings) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Wait for connection
+
+(set phone-wait-for-connection
+  (proc (port)
+    (= (read-string port) "<C\r")))
+
+(set phone-connection-waiting?
+  (proc (port rings)
+    (local (ret len ct res)
+      (begin
+        (set ret (phone-flush-port))
+        (set len (length ret))
+        (set ct 0)
+        (set res False)
+        (while (< ct (- len 2))
+          (begin
+            (if (and (= (ret ct) '<') (= (ret (+ ct 1)) 'C'))
+                (set res True))
+            (set ct (+ ct 1))))
+        res))))
+
+###########################################################################
+# Set host response time
+
+(set phone-host-timeout
+  (proc (port sec)
+    (begin
+      (phone-flush-port port)
+      (write-string port (append ">A2" (uneval (integer sec)) "\r"))
+      (read-string port))))
+
+###########################################################################
+# Finds numerical touch-tone equivalent of a string
+
+(set phone-letter-to-number
+  (proc (letter)
+    (switch letter
+      ('a' '2')
+      ('b' '2')
+      ('c' '2')
+      ('d' '3')
+      ('e' '3')
+      ('f' '3')
+      ('g' '4')
+      ('h' '4')
+      ('i' '4')
+      ('j' '5')
+      ('k' '5')
+      ('l' '5')
+      ('m' '6')
+      ('n' '6')
+      ('o' '6')
+      ('p' '7')
+      ('r' '7')
+      ('s' '7')
+      ('t' '8')
+      ('u' '8')
+      ('v' '8')
+      ('w' '9')
+      ('x' '9')
+      ('y' '9')
+      ('z' '1')
+      ('q' '1')
+      ('0' '0')
+      ('1' '1')
+      ('2' '2')
+      ('3' '3')
+      ('4' '4')
+      ('5' '5')
+      ('6' '6')
+      ('7' '7')
+      ('8' '8')
+      ('9' '9')
+      ('#' '#')
+      ('*' '*')
+      (else '*'))))
+
+(set phone-string-to-number
+  (proc (str)
+    (map phone-letter-to-number str)))
+
+###########################################################################
+# Get numeric input until match recognized.
+# List of matches returned.
+
+(set phone-string-match
+  (proc (port strlist)
+    (local (numlist nextnumlist nextstrlist index inputchar)
+      (begin
+        (set numlist (map phone-string-to-number strlist))
+        (set nextnumlist [])
+        (set nextstrlist [])
+        (set index 0)
+        (set inputchar Null)
+        (while (and (> (length numlist) 0) (not (apply = numlist)))
+          (begin
+            (set inputchar ((phone-receive-num-input port 1) 0))
+            (set nextnumlist [])
+            (set nextstrlist [])
+            (map (proc (num str) (if (= (num index) inputchar)
+                                     (begin
+                                       (set nextnumlist 
+                                         (tail-insert num nextnumlist))
+                                       (set nextstrlist 
+                                         (tail-insert str nextstrlist)))))
+                 numlist strlist)
+            (set numlist nextnumlist)
+            (set strlist nextstrlist)
+            (set index (+ index 1))))
+        strlist))))
+
+
+
+
+
+
+
+

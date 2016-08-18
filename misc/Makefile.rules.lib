@@ -1,0 +1,35 @@
+# Isis library Makefile rules
+# Stefan Agamanolis
+
+# The including Makefile defines the following:
+# LIBNAME, SRCS, INCDIR, LIBDIR, INCLUDES, DEFINES, HEADERS
+
+# standard settings
+
+SHELL = /bin/sh
+RM = rm -f
+CC = cc
+CP = cp
+AR = ar -cqs           
+
+OBJS = $(SRCS:.c=.o)
+
+lib$(LIBNAME).a: $(OBJS)
+	$(RM) $@
+	$(AR) $@ $(OBJS)
+
+.c.o:
+	$(RM) $@
+	$(CC) -c -O3 $(INCLUDES) $(DEFINES) $*.c 
+
+all:: lib$(LIBNAME).a
+
+clean::
+	$(RM) *.o *.a core *~ .emacs_* 
+
+install:: lib$(LIBNAME).a $(HEADERS)
+	@for i in $(HEADERS); do \
+	  echo $(CP) $$i $(INCDIR); \
+	  $(CP) $$i $(INCDIR); \
+	done
+	$(CP) lib$(LIBNAME).a $(LIBDIR)

@@ -1,0 +1,235 @@
+#  image color utilities
+#
+#  J. Watlington, 12/6/96
+#
+#  These are isis functions that serve as a convenient interface between
+#  Isis data structures and C.
+#
+# Fixed up by stefan, 2/19/97
+# Fixed again by stefan, 3/23/98
+# Added "image-color-rgb-to-yiq" dakss, 11/30/98
+# Added "image-color-yiq-to-rgb" dakss, 12/1/98
+
+###########################################################################
+# YBR - RGB conversion
+
+(set image-color-rgb-to-br
+  (proc (rgbbuf brbuf)
+    (begin
+      (if (or (!= (rgbbuf buf-type) c-byte)
+              (!= (brbuf buf-type) c-short)
+              (!= (rgbbuf buf-chans) 3)
+              (!= (brbuf buf-chans) 2))
+          (image-buf-error "image-color-rgb-to-br" rgbbuf brbuf)
+          (image-color-raw-rgb-to-br (rgbbuf buf-dims)
+                                     (rgbbuf buf-addrs)
+                                     (rgbbuf buf-steps)
+                                     (brbuf buf-addrs)
+                                     (brbuf buf-steps)))
+      brbuf)))
+
+(set image-color-rgb-to-y
+  (proc (rgbbuf ybuf)
+    (begin
+      (if (or (!= (rgbbuf buf-type) c-byte)
+              (!= (ybuf buf-type) c-byte)
+              (!= (rgbbuf buf-chans) 3)
+              (!= (ybuf buf-chans) 1))
+          (image-buf-error "image-color-rgb-to-y" rgbbuf ybuf)
+          (image-color-raw-rgb-to-y (rgbbuf buf-dims)
+                                    (rgbbuf buf-addrs)
+                                    (rgbbuf buf-steps)
+                                    (ybuf buf-addrs)
+                                    (ybuf buf-steps)))
+      ybuf)))
+
+(set image-color-ybr-to-rgb
+  (proc (ybuf brbuf rgbbuf)
+    (begin
+      (if (or (!= (brbuf buf-type) c-short)
+              (!= (ybuf buf-type) c-byte)
+              (!= (rgbbuf buf-type) c-byte)
+              (!= (ybuf buf-chans) 1)
+              (!= (brbuf buf-chans) 2)
+              (!= (rgbbuf buf-chans) 3)
+              (!= (brbuf buf-dims) (ybuf buf-dims) (rgbbuf buf-dims)))
+          (image-buf-error "image-color-ybr-to-rgb" ybuf brbuf rgbbuf)
+          (image-color-raw-ybr-to-rgb (ybuf buf-dims)
+                                      (ybuf buf-addrs)
+                                      (ybuf buf-steps)
+                                      (brbuf buf-addrs)
+                                      (brbuf buf-steps)
+                                      (rgbbuf buf-addrs)
+                                      (rgbbuf buf-steps)))
+      rgbbuf)))
+
+###########################################################################
+# YUV color space
+# yuv bufs in these calls must be [ ybuf uvbuf ] where uv buf has
+# half the horizontal size as ybuf.
+# brbuf should be a SHORT image the same size as the RGB image passed.
+
+(set new-yuv-image 
+  (proc (framesize)
+    [ (new-image c-byte 1 framesize) 
+      (new-image c-byte 2 (/ framesize [2 1])) ]))
+
+(set image-color-rgb-to-yuv 
+  (proc args
+    (local (rgbbuf brbuf yuvbuf)
+      (begin
+        (set rgbbuf (args 0))
+        (set brbuf (if (> (length args) 1) (args 1)
+                       (new-image c-short 2 (rgbbuf buf-dims))))
+        (set yuvbuf (if (> (length args) 2) (args 2)
+                        (new-yuv-image (rgbbuf buf-dims))))
+        (image-color-rgb-to-y rgbbuf (yuvbuf 0))
+        (image-color-rgb-to-br rgbbuf brbuf)
+        (image-gainbias 0.5 128 (subsample-image [2 1] brbuf) (yuvbuf 1))
+        (if (<= (length args) 1) (free-image brbuf))
+        yuvbuf))))
+
+(set image-color-yuv-to-rgb 
+  (proc args
+    (local (yuvbuf brbuf rgbbuf)
+      (begin
+        (set yuvbuf (args 0))
+        (set brbuf (if (> (length args) 1) (args 1)
+                       (new-image c-short 2 ((yuvbuf 0) buf-dims))))
+        (set rgbbuf (if (> (length args) 2) (args 2)
+                        (new-image c-byte 3 ((yuvbuf 0) buf-dims))))
+        (image-gainbias 2.0 -256.0 (yuvbuf 1) (subsample-image [2 1] brbuf))
+        (image-transfer 
+         (subsample-image 
+          [2 1] (isolate-sub-image [0 0] (- (brbuf buf-dims) [1 0]) brbuf))
+         (subsample-image 
+          [2 1] (isolate-sub-image [1 0] (- (brbuf buf-dims) [1 0]) brbuf)))
+        (image-color-ybr-to-rgb (yuvbuf 0) brbuf rgbbuf)
+        (if (<= (length args) 1) (free-image brbuf))
+        rgbbuf))))
+
+###########################################################################
+# These are the color routines
+
+(set image-color-relax
+  (proc ( chromabuf edgebuf num-iterations )
+    (if (!= (chromabuf buf-chans) 2)
+        (print "image-color-relax: Chroma image must have two channels\n")
+        (local (outputbuf tmpbuf relax-chan)
+          (begin
+            (set outputbuf (new-image c-short 2 (chromabuf buf-dims)))
+            (set tmpbuf    (new-image c-short 2 (chromabuf buf-dims)))
+            (set relax-chan
+              (proc (chromachan edgebuf outputchan num-iter)
+                (local (chroma-type edge-type xsize ysize cxstep cystep
+                                    exstep eystep cptr eptr optr)
+
+                  (begin
+                    (set chroma-type (chromachan buf-type))
+                    (set edge-type (edgebuf buf-type))
+                    (set xsize  ((chromachan buf-dims) 0))
+                    (set ysize  ((chromachan buf-dims) 1))
+                    (set cxstep ((chromachan buf-steps) 0))
+                    (set cystep ((chromachan buf-steps) 1))
+                    (set exstep ((edgebuf buf-steps) 0))
+                    (set eystep ((edgebuf buf-steps) 1))
+                    (set cptr   ((chromachan buf-addrs) 0))
+                    (set eptr   ((edgebuf buf-addrs) 0))
+                    (set optr   ((outputchan buf-addrs) 0))
+                    (if (!= chroma-type c-short)
+                        (print "Error in chroma type\n"))
+                    (if (!= edge-type c-byte)
+                        (print "Error in edge type\n"))
+                    (image-color-relax-chan cptr eptr optr	
+                                            xsize ysize
+                                            cxstep cystep
+                                            exstep eystep
+                                            num-iter)))))
+            (image-gainbias 1.5 0.0 chromabuf tmpbuf)
+            (relax-chan (isolate-channel 0 tmpbuf) edgebuf
+                        (isolate-channel 0 outputbuf) num-iterations)
+            (relax-chan (isolate-channel 1 tmpbuf) edgebuf
+                        (isolate-channel 1 outputbuf) num-iterations)
+            outputbuf )))))
+
+(set image-color-relax-rgb
+  (proc ( chromabuf edgebuf num-iterations )
+    (if (!= (chromabuf buf-chans) 3)
+        (print "image-color-relax: RGB image must have three channels\n")
+        (local (outputbuf relax-chan)
+          (begin
+            (set outputbuf (new-image c-byte 3 (chromabuf buf-dims)))
+            (set relax-chan
+              (proc (chromachan edgebuf outputchan num-iter)
+                (local (chroma-type edge-type xsize ysize cxstep cystep
+                                    exstep eystep cptr eptr optr)
+
+                  (begin
+                    (set chroma-type (chromachan buf-type))
+                    (set edge-type (edgebuf buf-type))
+                    (set xsize  ((chromachan buf-dims) 0))
+                    (set ysize  ((chromachan buf-dims) 1))
+                    (set cxstep ((chromachan buf-steps) 0))
+                    (set cystep ((chromachan buf-steps) 1))
+                    (set exstep ((edgebuf buf-steps) 0))
+                    (set eystep ((edgebuf buf-steps) 1))
+                    (set cptr   ((chromachan buf-addrs) 0))
+                    (set eptr   ((edgebuf buf-addrs) 0))
+                    (set optr   ((outputchan buf-addrs) 0))
+                    (if (!= chroma-type c-byte)
+                        (print "Error in chroma type\n"))
+                    (if (!= edge-type c-byte)
+                        (print "Error in edge type\n"))
+                    (image-color-relax-byte-chan cptr eptr optr
+                                                 xsize ysize
+                                                 cxstep cystep
+                                                 exstep eystep
+                                                 num-iter)))))
+            (relax-chan (isolate-channel 0 chromabuf) edgebuf
+                        (isolate-channel 0 outputbuf) num-iterations)
+            (relax-chan (isolate-channel 1 chromabuf) edgebuf
+                        (isolate-channel 1 outputbuf) num-iterations)
+            (relax-chan (isolate-channel 2 chromabuf) edgebuf
+                        (isolate-channel 2 outputbuf) num-iterations)
+            outputbuf )))))
+
+###########################################################################
+# YIQ color space
+# These transform to and from luminance (Y), red-cyan (I) and green-magenta (Q).
+# To keep them in byte format (and in compliance with standard
+# CCIR-601), the I and Q channels are mean-centered around 128, not 0.
+
+(set image-color-rgb-to-yiq
+  (proc (rgbbuf yiqbuf)
+    (begin
+      (if (or (!= (rgbbuf buf-type) c-byte)
+              (!= (yiqbuf buf-type) c-byte)
+              (!= (rgbbuf buf-chans) 3)
+              (!= (yiqbuf buf-chans) 3))
+          (image-buf-error "image-color-rgb-to-yiq" rgbbuf yiqbuf)
+          (image-color-raw-rgb-to-yiq (rgbbuf buf-dims)
+                                      (rgbbuf buf-addrs)
+                                      (rgbbuf buf-steps)
+                                      (yiqbuf buf-addrs)
+                                      (yiqbuf buf-steps)))
+      yiqbuf)))
+
+(set image-color-yiq-to-rgb
+  (proc (yiqbuf rgbbuf)
+    (begin
+      (if (or (!= (yiqbuf buf-type) c-byte)
+              (!= (rgbbuf buf-type) c-byte)
+              (!= (yiqbuf buf-chans) 3)
+              (!= (rgbbuf buf-chans) 3))
+          (image-buf-error "image-color-yiq-to-rgb" yiqbuf rgbbuf)
+          (image-color-raw-yiq-to-rgb (yiqbuf buf-dims)
+                                      (yiqbuf buf-addrs)
+                                      (yiqbuf buf-steps)
+                                      (rgbbuf buf-addrs)
+                                      (rgbbuf buf-steps)))
+      rgbbuf)))
+
+
+
+
+

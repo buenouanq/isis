@@ -1,0 +1,64 @@
+# Simple UDP audio sender
+# Stefan Agamanolis
+# Assumes audio parameters and sound card type are same as receiver!
+#
+# Usage:
+# isis audio-send.isis <hostname> <portnum>
+
+# Get destination from command line arguments
+
+(set hostname (command-line-args 0))
+(set portnum (eval (command-line-args 1)))
+
+# Open UDP port
+
+(set port (udp-open-output hostname portnum))
+
+# Audio parameters
+
+(set chans 1)
+(set bits 16)
+(set rate 44100)
+(set unsigned False)
+(set bigendian False)
+(set bufsamps 1024)
+
+# Open audio device
+
+(if (not (set alsa (alsa-open-input)))
+    (begin
+      (print "Error opening ALSA input device" newline)
+      (exit)))
+
+# Request audio paramaters and buffer size, get actuals
+
+(set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans bufsamps))
+
+(if (not bufsamps) 
+    (begin
+      (print "Input audio format rejected" newline)
+      (exit)))
+
+(set bufbytes (* bufsamps chans (/ bits 8)))
+(set buf (allocate-memory bufbytes))
+
+# Loop capturing and sending audio packets
+
+(print "Sending audio to " hostname " port " portnum newline)
+
+(while True
+  (begin
+
+    # check if continuity lost and re-start capture if so
+    (if (not (alsa-state alsa))
+	(begin
+	  (alsa-prepare alsa)
+	  (alsa-start alsa)))
+
+    # read from ALSA and write to UDP connection
+    (alsa-read alsa bufsamps buf)
+    (write-raw port bufbytes buf)
+    (print ".")
+
+    ))
+

@@ -1,0 +1,89 @@
+############################################################################
+# Macaroni WEIRDANIM
+# Displays several images of attacking cats turning green
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Weirdanim")
+(set macwin (macaroni-create-window "Weirdanim" [300 300] [100 100] True))
+
+############################################################################
+# Create Macaroni image and transform objects
+
+(set numcats 3)
+
+(set iobj (mac-new-image [mac-url "file:/usr/local/isis/media/nanasmall.jpg"]))
+
+(set itranslist (map (proc (x) (mac-new-transform [mac-object iobj]))
+                     (make-list numcats Null)))
+
+############################################################################
+# Create a Macaroni scene containing all the objects
+
+(set scene (mac-new-scene [mac-objects itranslist]))
+
+############################################################################
+# Define a timeline for object path
+
+(set ptl (new-timeline))
+(ptl 0.0 [100.0 200.0])
+(ptl 0.5 [100.0 150.0] interp-cubic)
+(ptl 1.5 [100.0 100.0] interp-cubic)
+(ptl 3.5 [200.0 100.0] interp-cubic)
+(ptl 5.5 [200.0 200.0] interp-cubic)
+(ptl 8.0 [100.0 200.0] interp-cubic)
+(ptl 10.0 [150.0 150.0] interp-cubic)
+(ptl 'w' 10.0)
+
+##########################################################################
+# Define a timeline to control object's scale over time
+
+(set stl (new-timeline))
+(stl 0.0 [0.3 0.3])
+(stl 3.0 [1.0 1.0] interp-linear)
+(stl 8.0 [1.0 1.0])
+(stl 10.0 [4.0 4.0] interp-linear) # make image jump out
+(stl 'w' 10.0)
+
+##########################################################################
+# Define a timeline to control object's color over time
+
+(set ctl (new-timeline))
+(ctl 0.0 [1.0 1.0 1.0 0.0])
+(ctl 1.0 [1.0 1.0 1.0 1.0] interp-linear)  # fade in
+(ctl 8.0 [0.0 1.0 0.0 1.0] interp-linear)  # get green
+(ctl 10.0 [1.0 1.0 0.0 0.0] interp-linear) # fade out
+(ctl 'w' 10.0)
+
+##########################################################################
+# Define a timeline to control object's rotation over time
+
+(set rtl (new-timeline))
+(rtl 0.0 -30.0)
+(rtl 3.0 30.0 interp-linear)
+(rtl 8.0 -30.0 interp-linear)
+(rtl 10.0 200.0 interp-linear)
+(rtl 'w' 10.0)
+
+############################################################################
+# Start looping, updating object attributes each pass 
+# by indexing into the timelines with the current time plus an offset
+
+(set timer (new-timer))
+(set timeoffsets (make-series 0.0 numcats (/ 10.0 numcats)))
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (set thetime (timer))
+     (map (proc (obj offset)
+            (obj [mac-position (ptl (+ offset thetime))]
+                 [mac-scale (stl (+ offset thetime))]
+                 [mac-color (ctl (+ offset thetime))]
+                 [mac-rotation (rtl (+ offset thetime))]))
+          itranslist timeoffsets)
+     (macaroni-update-window macwin scene True))))
+

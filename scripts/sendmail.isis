@@ -1,0 +1,22 @@
+
+(set sendmail
+  (proc (server sender receiver message)
+    (local (tcp)
+      (begin
+        (set tcp (tcp-open server 25))
+        (if (!= tcp Null)
+            (begin
+	      (write-string tcp "helo media.mit.edu" newline)
+              (write-string tcp "mail from: " sender newline)
+              (if (and (list? receiver) (list? (receiver 0)))
+                  (map (proc (x) (write-string tcp "rcpt to: " x newline)) 
+                       receiver)
+                  (write-string tcp "rcpt to: " receiver newline))
+              (write-string tcp "data" newline)
+              (write-string tcp message newline "." newline)
+              (write-string tcp "quit" newline)
+              (close tcp)
+              True)
+            (begin
+              (print "Unable to contact sendmail on " server newline)))))))
+

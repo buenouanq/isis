@@ -1,0 +1,24 @@
+
+# the Y-combinator in Isis
+
+(set y 
+  (proc (m) 
+    ((proc (future)
+       (m (proc (arg)
+            ((future future) arg))))
+     (proc (future)
+       (m (proc (arg)
+            ((future future) arg)))))))
+
+# a recursive factorial program
+
+(set m
+  (proc (recfun)
+    (proc (x)
+      (if x 
+          (* x (recfun (- x 1)))
+          1))))
+
+(set fact (y m))
+
+(fact 5)

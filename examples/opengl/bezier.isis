@@ -1,0 +1,108 @@
+# bez-example.isis
+# from page 448 of the OpenGL Programmers Guide
+
+(set ctrlpoints
+  (pack [ -1.5 -1.5  4.0
+          -0.5 -1.5  2.0
+          0.5 -1.5 -1.0
+          1.5 -1.5  2.0 
+          -1.5 -0.5  1.0
+          -0.5 -0.5  3.0
+          0.5 -0.5  0.0
+          1.5 -0.5 -1.0 
+          -1.5  0.5  4.0
+          -0.5  0.5  0.0
+          0.5  0.5  3.0
+          1.5  0.5  4.0 
+          -1.5  1.5 -2.0
+          -0.5  1.5 -2.0
+          0.5  1.5  0.0
+          1.5  1.5 -1.0 ] c-float))
+
+(set initlights
+  (proc ()
+    (begin
+      (set ambient (pack [0.2 0.2 0.2 1.0] c-float))
+      (set position (pack [0.0 0.0 2.0 1.0] c-float))
+      (set mat_diffuse (pack [0.6 0.6 0.6 1.0] c-float))
+      (set mat_specular (pack [1.0 1.0 1.0 1.0] c-float))
+      (set mat_shininess (pack [50.0] c-float))
+
+      (glEnable GL_LIGHTING)
+      (glEnable GL_LIGHT0)
+
+      (glLightfv GL_LIGHT0 GL_AMBIENT ambient)
+      (glLightfv GL_LIGHT0 GL_POSITION position)
+
+      (glMaterialfv GL_FRONT GL_DIFFUSE mat_diffuse)
+      (glMaterialfv GL_FRONT GL_SPECULAR mat_specular)
+      (glMaterialfv GL_FRONT GL_SHININESS mat_shininess))))
+
+(set disp    # don't call it "display"--overrides isis primitive "display"
+  (proc ()
+    (begin
+      (glClear (| GL_COLOR_BUFFER_BIT GL_DEPTH_BUFFER_BIT))
+      (glPushMatrix)
+      (glRotatef 85.0 1.0 1.0 1.0)
+      (glEvalMesh2 GL_FILL 0 20 0 20)
+      (glPopMatrix)
+      (glFlush))))
+
+(set init
+  (proc ()
+    (begin
+      (glClearColor 0.0 0.0 0.0 0.0)
+      (glEnable GL_DEPTH_TEST)
+      (glMap2f GL_MAP2_VERTEX_3 0.0 1.0 3 4 0.0 1.0 12 4 ctrlpoints)
+      (glEnable GL_MAP2_VERTEX_3)
+      (glEnable GL_AUTO_NORMAL)
+      (glMapGrid2f 20 0.0 1.0 20 0.0 1.0)
+      (initlights))))
+
+(set reshape
+  (proc (w h)
+    (local (rw rh)
+      (begin
+        (set rw (real w))
+        (set rh (real h))
+        (glViewport 0 0 w h)
+        (glMatrixMode GL_PROJECTION)
+        (glLoadIdentity)
+        (if (<= w h)
+            (glOrtho -4.0 4.0
+                     (* -4.0 (/ rh rw))
+                     (* 4.0 (/ rh rw))
+                     -4.0 4.0)
+            (glOrtho (* -4.0 (/ rw rh))
+                     (* 4.0 (/ rw rh))
+                     -4.0 4.0 
+                     -4.0 4.0))
+        (glMatrixMode GL_MODELVIEW)
+        (glLoadIdentity)))))
+
+(set keyboard
+  (proc (key x y)
+    (if (= (character key) 'q') (exit))))
+
+(set progname (pack "bez-example.isis" c-char))
+(set mainargc (pack [1] c-int))
+(set mainargv (pack [progname] c-pointer))
+
+(glutInit mainargc mainargv)
+(glutInitDisplayMode (| GLUT_SINGLE GLUT_RGB GLUT_DEPTH))
+(glutInitWindowSize 500 500)
+(glutInitWindowPosition 100 100)
+(glutCreateWindow "bezmesh")
+
+(init)
+
+(glutDisplayFunc glut_display)
+(glutReshapeFunc glut_reshape)
+(glutKeyboardFunc glut_keyboard)
+(update-glut-callback-slot glut_display_slot disp)
+(update-glut-callback-slot glut_reshape_slot reshape)
+(update-glut-callback-slot glut_keyboard_slot keyboard)
+
+(glutMainLoop)
+
+

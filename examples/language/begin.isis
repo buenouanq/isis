@@ -1,0 +1,16 @@
+
+(print "Please enter your current heart rate: ")
+
+(set rate (eval (read-string)))
+
+(set period (* 60.0 (/ 1.0 rate)))
+
+(print "I will now count your heartbeats: " newline)
+
+(set x 1)
+
+(while True 
+  (begin (print x) 
+	 (sleep period) 
+	 (set x (+ x 1))))
+

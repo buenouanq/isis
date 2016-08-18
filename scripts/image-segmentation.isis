@@ -1,0 +1,280 @@
+#  Isis Segmentation library
+#
+#  wad, 5/18/97
+#
+#  cleaned up by stefan, 3/23/98
+#
+#  additional contributions by Cian Cullinan 2001-2002
+
+
+(set image-segment-foreground
+  (proc (fgbuf bgbuf abuf gbmap)
+    (if (or (!= (fgbuf buf-dims) (bgbuf buf-dims))
+            (!= (fgbuf buf-chans) (bgbuf buf-chans)))
+        (image-buf-error "image-segment-foreground" fgbuf bgbuf abuf)
+        (begin 
+          (seg-simple-bkseg (fgbuf buf-dims)
+                            (fgbuf buf-addrs) 
+                            (fgbuf buf-steps) 
+                            (bgbuf buf-addrs) 
+                            (bgbuf buf-steps) 
+                            (abuf buf-dims) 
+                            (abuf buf-addrs) 
+                            (abuf buf-steps) 
+                            gbmap)
+          abuf))))
+
+(set image-segment-foreground-yuv
+  (proc (fgbuf bgbuf abuf gbmaps)
+    (begin 
+      (seg-simple-bkseg-yuv ((fgbuf 0) buf-dims)
+                            ((fgbuf 0) buf-addrs) 
+                            ((fgbuf 0) buf-steps) 
+                            ((fgbuf 1) buf-addrs)
+                            ((fgbuf 1) buf-steps) 
+                            ((bgbuf 0) buf-addrs)
+                            ((bgbuf 0) buf-steps) 
+                            ((bgbuf 1) buf-addrs)
+                            ((bgbuf 1) buf-steps) 
+                            (abuf buf-dims) 
+                            (abuf buf-addrs) 
+                            (abuf buf-steps) 
+                            gbmaps)
+      abuf)))
+
+(set image-init-chromakey
+  (proc (newkey buf1)
+    (begin 
+      (seg-init-chromakey newkey 
+                          (buf1 buf-dims) 
+                          (buf1 buf-addrs)
+                          (buf1 buf-steps))
+      buf1)))
+
+(set image-chromakey
+  (proc (buf1 bufk bufa)
+    (if (!= (buf1 buf-dims) (bufk buf-dims) (bufa buf-dims))
+        (image-buf-error "image-chromakey" buf1 bufk bufa)
+        (begin 
+          (seg-chromakey 0 255
+                         (buf1 buf-dims)
+                         (buf1 buf-addrs)
+                         (buf1 buf-steps)
+                         (bufk buf-addrs)
+                         (bufk buf-steps)
+                         (bufa buf-addrs)
+                         (bufa buf-steps))
+          bufa))))
+
+#  This allocates memory for a set of tables used in the segmentation.
+#  They contain 4 byte values per pixel in the foreground/background image.
+#  This table is initialized by calling segment-init-map or
+#  segment-init-map-yuv.
+
+(set image-bkseg-alloc-segmaps
+  (proc (dims)
+    (malloc (* (dims 0) (dims 1) 4))))
+
+(set image-bkseg-init-segmaps
+  (proc (bgbuf luma-plus luma-minus chroma-u chroma-v chroma-core segmaps)
+    (begin 
+      (seg-init-bkseg-yuv ((bgbuf 0) buf-addrs)
+                          ((bgbuf 0) buf-dims) 
+                          ((bgbuf 0) buf-steps) 
+                          ((bgbuf 1) buf-addrs)
+                          ((bgbuf 1) buf-steps) 
+                          luma-plus luma-minus 
+                          chroma-u chroma-v
+                          chroma-core
+                          segmaps)
+      segmaps)))
+
+#  This function is called to segment a foreground out from a previous
+#  captured background image, along with the segmap provided by processing
+#  it with init-map.  It generates an alpha buffer and writes it into the
+#  abuf provided.  It should be a single channel, byte image with the same
+#  size as the fgbuf/bkbuf.
+#  Since this is the yuv version, both fgbuf and bgbuf are lists of a
+#  luminance image and a two-channel chrominance image.
+
+(set image-bkseg
+  (proc (fgbuf bgbuf segmaps abuf)
+    (if (!= (abuf buf-dims) ((fgbuf 0) buf-dims) ((bgbuf 0) buf-dims))
+        (image-buf-error "segment-foreground-yuv" 
+                         (fgbuf 0) (bgbuf 0) (fgbuf 1) (bgbuf 1) abuf)
+        (begin
+          (seg-bkseg-yuv ((fgbuf 0) buf-addrs)
+                         ((fgbuf 0) buf-dims)
+                         ((fgbuf 0) buf-steps) 
+                         ((fgbuf 1) buf-addrs)
+                         ((fgbuf 1) buf-steps) 
+                         ((bgbuf 0) buf-addrs)
+                         ((bgbuf 0) buf-steps) 
+                         ((bgbuf 1) buf-addrs)
+                         ((bgbuf 1) buf-steps) 
+                         segmaps
+                         (abuf buf-addrs) 
+                         (abuf buf-steps))
+          abuf))))
+
+# This function fills holes in lines of an alpha channel.
+# pixels with value below edgethresh are considered to be in holes.
+# holes are filled with fillval if they contain maxpixels or less
+# and if the sum of the differences of the pixels from 255 is
+# less than holethresh.  if fillsidesflag is true, the sides of the
+# image can be holes.
+
+(set image-seg-fill-holes
+  (proc (edgethresh holethresh maxpixels fillval fillsidesflag inbuf outbuf)
+    (if (!= (inbuf buf-dims) (outbuf buf-dims))
+        (image-buf-error "image-seg-fill-holes" buf1 bufk bufa)
+        (begin 
+          (seg-fill-holes edgethresh holethresh maxpixels
+                          fillval fillsidesflag
+                          (inbuf buf-dims)
+                          (inbuf buf-addrs)
+                          (inbuf buf-steps)
+                          (outbuf buf-addrs)
+                          (outbuf buf-steps))
+          outbuf))))
+
+# initialize variance segmenter
+# pass a 256 * 256 byte buffer to seg-init-var-bkseg-table
+
+# Variance enhanced background segmentation
+
+(set image-seg-var-bkseg-yuv
+  (proc (fgbuf bgbuf varbuf segtable abuf hbuf)
+    (if (!= (abuf buf-dims) (hbuf buf-dims) ((fgbuf 0) buf-dims) 
+            ((bgbuf 0) buf-dims) ((varbuf 0) buf-dims))
+        (image-buf-error "image-seg-var-bkseg-yuv" 
+                         (fgbuf 0) (bgbuf 0) (varbuf 0) 
+                         (fgbuf 1) (bgbuf 1) (varbuf 1) 
+                         abuf hbuf)
+        (begin
+          (seg-var-bkseg-yuv segtable
+                             ((fgbuf 0) buf-dims)
+                             ((fgbuf 0) buf-addrs)
+                             ((fgbuf 0) buf-steps) 
+                             ((fgbuf 1) buf-addrs)
+                             ((fgbuf 1) buf-steps) 
+                             ((bgbuf 0) buf-addrs)
+                             ((bgbuf 0) buf-steps) 
+                             ((bgbuf 1) buf-addrs)
+                             ((bgbuf 1) buf-steps) 
+                             ((varbuf 0) buf-addrs)
+                             ((varbuf 0) buf-steps) 
+                             ((varbuf 1) buf-addrs)
+                             ((varbuf 1) buf-steps) 
+                             (abuf buf-addrs) 
+                             (abuf buf-steps)
+                             (hbuf buf-addrs) 
+                             (hbuf buf-steps))
+          abuf))))
+
+(set image-seg-var-bkseg-rgb
+  (proc (fgbuf bgbuf varbuf segtable abuf)
+    (if (!= (abuf buf-dims) (fgbuf buf-dims) 
+	    (bgbuf buf-dims) (varbuf buf-dims))
+        (image-buf-error "image-seg-var-bkseg-rgb" 
+                         fgbuf bgbuf varbuf abuf)
+        (begin
+	  (seg-var-bkseg-rgb segtable
+                             (fgbuf buf-dims)
+			     (fgbuf buf-addrs)
+			     (fgbuf buf-steps)
+			     (bgbuf buf-addrs)
+			     (bgbuf buf-steps)
+			     (varbuf buf-addrs)
+			     (varbuf buf-steps)
+			     (abuf buf-addrs) 
+                             (abuf buf-steps))
+          abuf))))
+
+
+# "object" encoder/decoder
+
+(set image-seg-init-encode-image-yuv
+  (proc (ybits ubits vbits abits)
+    (seg-init-encode-image-yuv ybits ubits vbits abits)))
+
+(set image-seg-init-encode-image-rgb
+  (proc (rbits gbits bbits abits)
+    (seg-init-encode-image-rgb rbits gbits bbits abits)))
+
+
+(set image-seg-encode-image-yuv
+  (proc (yuvbuf abuf outbuf)
+    (if (!= ((yuvbuf 0) buf-dims) (abuf buf-dims))
+        (image-buf-error "image-seg-encode-image-yuv" yuvbuf abuf)
+        (seg-encode-image-yuv ((yuvbuf 0) buf-dims)
+                              ((yuvbuf 0) buf-addrs)
+                              ((yuvbuf 0) buf-steps)
+                              ((yuvbuf 1) buf-addrs)
+                              ((yuvbuf 1) buf-steps)
+                              (abuf buf-addrs)
+                              (abuf buf-steps)
+                              outbuf))))
+
+(set image-seg-encode-image-rgb
+  (proc (rgbbuf abuf outbuf)
+    (if (!= (rgbbuf buf-dims) (abuf buf-dims))
+	(image-buf-error "image-seg-encode-image-rgb" rgbbuf abuf)
+	(seg-encode-image-rgb (rgbbuf buf-dims)
+			      (rgbbuf buf-addrs)
+			      (rgbbuf buf-steps)
+			      (abuf buf-addrs)
+			      (abuf buf-steps)
+			      outbuf))))
+
+(set image-seg-decode-image-yuv
+  (proc (inbuf outbuf)
+    (local (size chansize ybuf uvbuf abuf)
+      (begin
+        (set size (seg-decode-image-yuv inbuf outbuf))
+        (set chansize (* (size 0) (size 1)))
+        (set abuf (new-image uint8 1 size [1 (size 0)] [outbuf]))
+        (set ybuf (new-image uint8 1 size [1 (size 0)] [(+ outbuf chansize)]))
+        (set uvbuf (new-image uint8 2 (/ size [2 1]) [1 (/ (size 0) 2)] 
+                              [(+ outbuf (* chansize 2))
+                               (+ outbuf (* chansize 2) (/ chansize 2))]))
+        [ [ybuf uvbuf] abuf]))))
+
+(set image-seg-decode-image-rgb
+  (proc (inbuf outbuf)
+    (local (size chansize buf abuf)
+      (begin
+        (set size (seg-decode-image-rgb inbuf outbuf))
+        (set chansize (* (size 0) (size 1)))
+        (set abuf (new-image uint8 1 size [1 (size 0)] [outbuf]))
+        (set buf (new-image uint8 3 size [1 (size 0)] 
+			    [(+ outbuf chansize) 
+			    (+ outbuf (* 2 chansize)) 
+			    (+ outbuf (* 3 chansize))]))
+	[ buf abuf]))))
+
+(set image-seg-decode-image-rgb-interleaved
+  (proc (inbuf outbuf)
+    (local (size chansize buf)
+      (begin
+        (set size (seg-decode-image-rgb-interleaved inbuf outbuf))
+        (set image (new-image uint8 4 size [4 (* 4 (size 0))] 
+			      [outbuf (+ outbuf 1) (+ outbuf 2)  (+ outbuf 3)]))
+        image))))
+
+
+(set image-seg-color-rgb
+  (proc (rlow rhigh glow ghigh blow bhigh rgbbuf abuf)
+    (if (!= (rgbbuf buf-dims) (abuf buf-dims))
+	(image-buf-error "image-seg-color-rgb" rgbbuf abuf)
+	(seg-colour-rgb rlow rhigh glow ghigh blow bhigh (rgbbuf buf-dims) 
+			(rgbbuf buf-addrs) (rgbbuf buf-steps) 
+			(abuf buf-addrs) (abuf buf-steps)))))
+
+
+
+
+
+
+
+

@@ -1,0 +1,12 @@
+[ "imagefile" "images" ] 
+[ "widthfile" "widths" ] 
+[ "fontname" "Symbol" ] 
+[ "fontheight" 20 ] 
+[ "boxsize" [ 32 32 ] ] 
+[ "startchar" 32 ] 
+[ "numchars" 224 ] 
+[ "pagesize" [ 256 512 ] ] 
+[ "spacewidth" 7.7 ] 
+[ "chans" 1 ] 
+[ "bits" 8 ] 
+

@@ -1,0 +1,35 @@
+
+(set surfmouse-initialize
+  (proc (device)
+    (local (port)
+      (begin
+	(set port (open-input device))
+	(initialize-serial-port port 1200 7 1 Null False)
+	(set surfmouse-buf (malloc 8))
+	(while (pending port) (read-raw port 1 surfmouse-buf))
+	port))))
+
+(set surfmouse-read
+  (proc (port)
+    (local (tb lbutton rbutton xshift yshift)
+      (if (pending port)
+	  (begin
+	    (read-raw port 3 surfmouse-buf)
+	    (set tb (surfmouse-buf [c-byte 3]))
+	    (if (not (bit-and 0b01000000 (tb 0))) 
+		(begin
+		  (print newline "* Correcting surfmouse packet alignment...")
+		  (while (not (bit-and 0b01000000 (surfmouse-buf c-byte)))
+		    (read-raw port 1 surfmouse-buf))
+		  (read-raw port 2 (+ surfmouse-buf 1))
+		  (set tb (surfmouse-buf [c-byte 3]))
+		  (print "Done." newline)))
+	    (set lbutton (boolean (bit-and (tb 0) 0b00100000)))
+	    (set rbutton (boolean (bit-and (tb 0) 0b00010000)))
+	    (set xshift (bit-or (<< (bit-and 0b00000011 (tb 0)) 6)
+				(bit-and (tb 1) 0b00111111)))
+	    (set yshift (bit-or (<< (bit-and 0b00001100 (tb 0)) 4)
+				(bit-and (tb 2) 0b00111111)))
+	    (if (>= xshift 128) (set xshift (- xshift 256)))
+	    (if (>= yshift 128) (set yshift (- yshift 256)))
+	    [ [xshift yshift] lbutton False rbutton ])))))   # no middle button

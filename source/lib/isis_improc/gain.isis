@@ -1,0 +1,188 @@
+#  This file is the test of the improc gainbias package and the
+#  Isis interface to it.
+#  J. Watlington, 12/19/96
+
+(set infile-name "test-image")
+(set infile (input-image-datfile infile-name))
+(if (= infile Null)
+    (begin
+      (print "Unable to read file\n")
+      (exit)))
+(set raw-inframe (infile))
+(infile 'q')
+
+(set byte-test-image (extract-channel 1 raw-inframe))
+(set byte-temp (new-byte-image 1 (byte-test-image buf-dims)))
+
+(set short-temp (new-short-image 1 (byte-test-image buf-dims)))
+(set short-test-image (new-short-image 1 (byte-test-image buf-dims)))
+(image-convert byte-test-image short-test-image)
+
+(set int-temp (new-integer-image 1 (byte-test-image buf-dims)))
+(set int-test-image (new-integer-image 1 (byte-test-image buf-dims)))
+(image-convert byte-test-image int-test-image)
+
+(set float-temp (new-float-image 1 (byte-test-image buf-dims)))
+(set float-test-image (new-float-image 1 (byte-test-image buf-dims)))
+(image-convert byte-test-image float-test-image)
+
+(set double-temp (new-double-image 1 (byte-test-image buf-dims)))
+(set double-test-image (new-double-image 1 (byte-test-image buf-dims)))
+(image-convert byte-test-image double-test-image)
+
+(set do-stats
+     (proc (in-image name)
+	   (begin
+	     (print (append "Stats of " name "\nmin: "))
+	     (display (image-stats-min in-image))
+	     (print "mean: ")
+	     (display (image-stats-mean in-image))
+	     (print "max: ")
+	     (display (image-stats-max in-image)))))
+
+
+(do-stats byte-test-image "original image (byte version)")
+
+(image-gainbias 1.0 0.0 byte-test-image byte-temp)
+(do-stats byte-temp "byte->byte transfer ")
+
+(image-gainbias 1.0 48.0 byte-test-image byte-temp)
+(do-stats byte-temp "byte->byte bias (48.0)")
+
+(image-gainbias 2.0 0.0 byte-test-image byte-temp)
+(do-stats byte-temp "byte->byte gain (2.0)")
+
+(image-gainbias 2.0 -128.0 byte-test-image byte-temp)
+(do-stats byte-temp "byte->byte gain & bias (2.0 -128.0)")
+
+
+
+(do-stats byte-test-image "original image (byte version)")
+
+(image-gainbias 1.0 0.0 byte-test-image short-temp)
+(do-stats short-temp "byte->short transfer ")
+
+(image-gainbias 1.0 48.0 byte-test-image short-temp)
+(do-stats short-temp "byte->short bias (48.0)")
+
+(image-gainbias 2.0 0.0 byte-test-image short-temp)
+(do-stats short-temp "byte->short gain (2.0)")
+
+(image-gainbias 2.0 -128.0 byte-test-image short-temp)
+(do-stats short-temp "byte->short gain & bias (2.0 -128.0)")
+
+
+
+(do-stats byte-test-image "original image (byte version)")
+
+(image-gainbias 1.0 0.0 byte-test-image int-temp)
+(do-stats int-temp "byte->int transfer ")
+
+(image-gainbias 1.0 48.0 byte-test-image int-temp)
+(do-stats int-temp "byte->int bias (48.0)")
+
+(image-gainbias 2.0 0.0 byte-test-image int-temp)
+(do-stats int-temp "byte->int gain (2.0)")
+
+(image-gainbias 2.0 -128.0 byte-test-image int-temp)
+(do-stats int-temp "byte->int gain & bias (2.0 -128.0)")
+
+
+
+(do-stats short-test-image "short version of original")
+
+(image-gainbias 1.0 0.0 short-test-image byte-temp)
+(do-stats byte-temp "short->byte transfer ")
+
+(image-gainbias 1.0 48.0 short-test-image byte-temp)
+(do-stats byte-temp "short->byte bias (48.0)")
+
+(image-gainbias 2.0 0.0 short-test-image byte-temp)
+(do-stats byte-temp "short->byte gain (2.0)")
+
+(image-gainbias 2.0 -128.0 short-test-image byte-temp)
+(do-stats byte-temp "short->byte gain & bias (2.0 -128.0)")
+
+	  
+(do-stats short-test-image "short version of original")
+
+(image-gainbias 1.0 0.0 short-test-image short-temp)
+(do-stats short-temp "short->short transfer ")
+
+(image-gainbias 1.0 48.0 short-test-image short-temp)
+(do-stats short-temp "short->short bias (48.0)")
+
+(image-gainbias 2.0 0.0 short-test-image short-temp)
+(do-stats short-temp "short->short gain (2.0)")
+
+(image-gainbias 2.0 -128.0 short-test-image short-temp)
+(do-stats short-temp "short->short gain & bias (2.0 -128.0)")
+
+
+(do-stats short-test-image "short version of original")
+
+(image-gainbias 1.0 0.0 short-test-image int-temp)
+(do-stats int-temp "short->int transfer ")
+
+(image-gainbias 1.0 48.0 short-test-image int-temp)
+(do-stats int-temp "short->int bias (48.0)")
+
+(image-gainbias 2.0 0.0 short-test-image int-temp)
+(do-stats int-temp "short->int gain (2.0)")
+
+(image-gainbias 2.0 -128.0 short-test-image int-temp)
+(do-stats int-temp "short->int gain & bias (2.0 -128.0)")
+
+
+
+
+(do-stats int-test-image "int version of original")
+
+(image-gainbias 1.0 0.0 int-test-image int-temp)
+(do-stats int-temp "int->int transfer ")
+
+(image-gainbias 1.0 48.0 int-test-image int-temp)
+(do-stats int-temp "int->int bias (48.0)")
+
+(image-gainbias 2.0 0.0 int-test-image int-temp)
+(do-stats int-temp "int->int gain (2.0)")
+
+(image-gainbias 2.0 -128.0 int-test-image int-temp)
+(do-stats int-temp "int->int gain & bias (2.0 -128.0)")
+
+
+
+
+(do-stats float-test-image "float version of original")
+
+(image-gainbias 1.0 0.0 float-test-image float-temp)
+(do-stats float-temp "float->float transfer ")
+
+(image-gainbias 1.0 48.0 float-test-image float-temp)
+(do-stats float-temp "float->float bias (48.0)")
+
+(image-gainbias 2.0 0.0 float-test-image float-temp)
+(do-stats float-temp "float->float gain (2.0)")
+
+(image-gainbias 2.0 -128.0 float-test-image float-temp)
+(do-stats float-temp "float->float gain & bias (2.0 -128.0)")
+
+
+
+
+(do-stats double-test-image "double version of original")
+
+(image-gainbias 1.0 0.0 double-test-image double-temp)
+(do-stats double-temp "double->double transfer ")
+
+(image-gainbias 1.0 48.0 double-test-image double-temp)
+(do-stats double-temp "double->double bias (48.0)")
+
+(image-gainbias 2.0 0.0 double-test-image double-temp)
+(do-stats double-temp "double->double gain (2.0)")
+
+(image-gainbias 2.0 -128.0 double-test-image double-temp)
+(do-stats double-temp "double->double gain & bias (2.0 -128.0)")
+
+
+

@@ -1,0 +1,208 @@
+# This is the utilities program
+
+(set utility-list
+  [ 
+   [ "avi2isis" 
+     "Convert AVI movie to Isis movie"
+     2 "infilename outfilename"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (apply convert-avi-to-isis-movie args))) ]
+   [ "jpeg2isis" 
+     "Convert JPEG image sequence to Isis movie"
+     2 "inbasename outfilename audioname achans arate abits"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (set basename (args 0))
+	 (set outname (args 1))
+	 (set aname (if (> (length args) 2) (args 2)))
+	 (set achans (if (> (length args) 3) (eval (args 3)) 2))
+	 (set arate (if (> (length args) 4) (eval (args 4)) 22050))
+	 (set abits (if (> (length args) 5) (eval (args 5)) 16))
+	 (convert-jpeg-sequence-to-isis-movie basename outname aname achans arate abits))) ]
+   [ "isis2avi" 
+     "Convert Isis movie to AVI movie"
+     2 "infilename outfilename"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (apply convert-isis-to-avi-movie args))) ]
+   [ "aviinfo" 
+     "Print information about an AVI movie"
+     1 "avifilename"
+     (proc args
+       (local (port info)
+	 (begin
+	   (load "movie-utilities.isis")
+	   (print newline)
+	   (set port (open-input (args 0)))
+	   (set info (avi-read-info port))
+	   (map display (info))
+	   (print newline)
+	   (close port)))) ]
+   [ "playmovie" 
+     "Play an Isis movie"
+     1 "isis-movie-filename fullscreen-flag"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (set filename (args 0))
+	 (set fullscreen (if (> (length args) 1) (eval (args 1)) False))
+	 (play-movie filename fullscreen))) ]
+   [ "browsemovie" 
+     "Browse an Isis movie"
+     1 "isis-movie-filename fullscreen-flag"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (set filename (args 0))
+	 (set fullscreen (if (> (length args) 1) (eval (args 1)) False))
+	 (browse-movie filename fullscreen))) ]
+   [ "recmovie"
+     "Record an Isis movie"
+     1 "filename options ..."
+     (proc args
+       (local (as i ac)
+	 (begin
+	   (load "movie-utilities.isis")
+	   (set as (new-structure))
+	   (set i 0)
+	   (set ac (length args))
+	   (while (< i ac)
+	     (begin
+	       (if (= ((args i) 0) '-')
+		   (switch (args i)
+		     ("-size" (as "size" [ (eval (args (set i (+ i 1)))) (eval (args (set i (+ i 1)))) ]))
+		     ("-dev" (as "device" (args (set i (+ i 1)))))
+		     ("-input" (as "input" (eval (args (set i (+ i 1))))))
+		     ("-std" (as "standard" (args (set i (+ i 1)))))
+		     ("-qual" (as "quality" (eval (args (set i (+ i 1))))))
+		     ("-noaudio" (as "achans" 0))
+		     ("-achans" (as "achans" (eval (args (set i (+ i 1))))))
+		     ("-arate" (as "arate" (eval (args (set i (+ i 1))))))
+		     ("-abits" (as "abits" (eval (args (set i (+ i 1))))))
+		     ("-freq" (as "frequency" (eval (args (set i (+ i 1))))))
+		     ("-bri" (as "brightness" (eval (args (set i (+ i 1))))))
+		     ("-con" (as "contrast" (eval (args (set i (+ i 1))))))
+		     ("-dur" (as "duration" (eval (args (set i (+ i 1))))))
+		     ("-delay" (as "delay" (eval (args (set i (+ i 1))))))
+		     ("-sub" (as "subrate" (eval (args (set i (+ i 1))))))
+		     (else (print "* Unrecognized option " (args i) newline)))
+		   (as "filename" (args i)))
+	       (set i (+ i 1))))
+	   (if (as "filename")
+	       (apply record-movie (as))
+	       (print "* No filename specified" newline))))) ]
+   [ "gluemovies" 
+     "Concatenate several Isis movies together"
+     2 "movie-filename movie-filename ... output-movie-filename"
+     (proc args
+       (begin
+	 (load "movie-utilities.isis")
+	 (set input-filenames (allbutlast 1 args))
+	 (set output-filename (tail args))
+	 (glue-movies input-filenames output-filename))) ]
+   [ "capstill" 
+     "Capture a JPEG still image from video input"
+     1 "filename quality devicename inputnum xsize ysize"
+     (proc args
+       (begin
+	 (set filename (args 0))
+	 (set quality (if (> (length args) 1) (eval (args 1)) 95))
+	 (set devicename (if (> (length args) 2) (args 2) "/dev/video0"))
+	 (set inputnum (if (> (length args) 3) (eval (args 3)) 1))
+	 (set xsize (if (> (length args) 4) (eval (args 4)) 640))
+	 (set ysize (if (> (length args) 5) (eval (args 5)) 480))
+	 (set standard (if (> (length args) 6) (args 6) "ntsc"))
+	 (vcap-capture-still filename quality devicename inputnum [xsize ysize] standard))) ]
+   [ "livevideo"
+     "Capture live video to a window"
+     0 "devicename inputnum hsize vsize standard fullscreen frequency"
+     (proc args
+       (local (devicename inputnum hsize vsize)
+	 (begin
+	   (set devicename (if (> (length args) 0) (args 0) "/dev/video0"))
+	   (set inputnum (if (> (length args) 1) (eval (args 1)) 1))
+	   (set hsize (if (> (length args) 2) (eval (args 2)) 640))
+	   (set vsize (if (> (length args) 3) (eval (args 3)) 480))
+	   (set standard (if (> (length args) 4) (args 4) "ntsc"))
+	   (set fullscreen (if (> (length args) 5) (eval (args 5)) 0))
+	   (set frequency (if (> (length args) 6) (eval (args 6)) 0))
+	   (vcap-live-video devicename inputnum [ hsize vsize ] standard 
+			    fullscreen frequency )))) ]
+   [ "playwav"
+     "Play a PCM WAVE format file (ALSA)"
+     1 "filename"
+     (proc args (alsa-play-wave-file (args 0))) ]
+   [ "playraw"
+     "Play a raw PCM audio file (ALSA)"
+     1 "filename chans rate bits unsigned bigendian"
+     (proc args
+       (local (filename chans rate bits unsigned bigendian)
+	 (begin
+	   (set filename (args 0))
+	   (set chans (if (> (length args) 1) (eval (args 1)) 2))
+	   (set rate (if (> (length args) 2) (eval (args 2)) 22050))
+	   (set bits (if (> (length args) 3) (eval (args 3)) 16))
+	   (set unsigned (if (> (length args) 4) (eval (args 4)) False))
+	   (set bigendian (if (> (length args) 5) (eval (args 5)) False))
+	   (alsa-play-raw-file filename chans rate bits unsigned bigendian)))) ]
+   [ "recraw"
+     "Record a raw PCM audio file (ALSA)"
+     1 "filename chans rate bits unsigned bigendian"
+     (proc args
+       (local (filename secs chans rate bits unsigned bigendian)
+	 (begin
+	   (set filename (args 0))
+	   (set chans (if (> (length args) 1) (eval (args 1)) 2))
+	   (set rate (if (> (length args) 2) (eval (args 2)) 22050))
+	   (set bits (if (> (length args) 3) (eval (args 3)) 16))
+	   (set unsigned (if (> (length args) 4) (eval (args 4)) False))
+	   (set bigendian (if (> (length args) 5) (eval (args 5)) False))
+	   (print "Press return to stop recording." newline)
+	   (alsa-record-raw-file filename chans rate bits unsigned bigendian
+				 Null (proc () (pending)))))) ]
+   [ "wav2raw"
+     "Convert WAVE file to raw audio"
+     2 "infilename outfilename"
+     (proc args (apply audio-wave-to-raw args)) ]
+   [ "raw2wav"
+     "Convert raw audio to WAVE file"
+     5 "infilename outfilename chans rate bits"
+     (proc args (audio-raw-to-wave (args 0) (args 1) (eval (args 2))
+				   (eval (args 3)) (eval (args 4)))) ]
+   ])
+    
+(if (or (not command-line-args)
+	(not (set util (assoc (command-line-args 0) utility-list))))
+    (begin
+      (print newline)
+      (print "Usage:  isisu utility-name arguments ..." newline newline)
+      (print "List of utilities:" newline newline)
+      (map (proc (util) (print (util 0) 
+			       (make-list (- 20 (length (util 0))) ' ') 
+			       (util 1)
+			       newline))
+	   utility-list)
+      (print newline)
+      (print "For more info on a utility, invoke it with no arguments." newline)
+      (print newline)
+      (exit)))
+
+(set utilargs (allbutfirst 1 command-line-args))
+(if (< (length utilargs) (util 2))
+    (begin
+      (print newline)
+      (print (util 0) " -- " (util 1) newline)
+      (print newline)
+      (print "Usage:  isisu " (util 0) " " (util 3) newline)
+      (print newline)
+      (if (= 1 (util 2))
+	  (print "At least 1 argument is required." newline)
+	  (print "At least " (util 2) "arguments are required." newline))
+      (print newline)
+      (exit)))
+      
+(apply (util 4) (allbutfirst 1 command-line-args))

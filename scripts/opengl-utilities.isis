@@ -1,0 +1,380 @@
+# OpenGL helper procedures
+# Stefan Agamanolis
+
+###########################################################################
+# GLUT stuff
+
+(set glut-init
+  (proc (name)
+    (local (progname mainargc mainargv)
+      (begin
+        (set progname (pack name c-char))
+        (set mainargc (pack [1] c-int))
+        (set mainargv (pack [progname] c-pointer))
+        (glutInit mainargc mainargv)
+        (free progname)
+        (free mainargc)
+        (free mainargv)))))
+
+(set glut-create-window
+  (proc (name size position double)
+    (begin
+      (glutInitDisplayMode (| GLUT_RGB (if double GLUT_DOUBLE GLUT_SINGLE)))
+      (glutInitWindowSize (size 0) (size 1))
+      (glutInitWindowPosition (position 0) (position 1))
+      (glutCreateWindow name))))
+
+(set glut-create-sub-window
+  (proc (win size position double)
+    (begin
+      (glutInitDisplayMode (| GLUT_RGB (if double GLUT_DOUBLE GLUT_SINGLE)))
+      (glutCreateSubWindow win (position 0) (position 1) (size 0) (size 1)))))
+
+
+###########################################################################
+# buffer routines
+
+(set gl-new-image
+  (proc (chans size)
+    (new-interleaved-image c-byte chans size)))
+
+(set gl-transfer-convert-rgba
+  (proc (inbuf outbuf)
+    (switch (inbuf buf-chans)
+      (1 (begin (image-transfer inbuf (isolate-channel 0 outbuf))
+                (image-transfer inbuf (isolate-channel 1 outbuf))
+                (image-transfer inbuf (isolate-channel 2 outbuf))
+                (image-fill-constant 255 (isolate-channel 3 outbuf))))
+      (2 (begin (image-transfer (isolate-channel 0 inbuf) (isolate-channel 0 outbuf))
+                (image-transfer (isolate-channel 0 inbuf) (isolate-channel 1 outbuf))
+                (image-transfer (isolate-channel 0 inbuf) (isolate-channel 2 outbuf))
+                (image-transfer (isolate-channel 1 inbuf) (isolate-channel 3 outbuf))))
+      (3 (begin (image-transfer inbuf (isolate-channels 0 2 outbuf))
+                (image-fill-constant 255 (isolate-channel 3 outbuf))))
+      (4 (image-transfer inbuf outbuf)))))
+
+###########################################################################
+# drawing routines
+
+(set gl-texvertex (proc (tx ty vx vy) (begin (glTexCoord2f tx ty) (glVertex2f vx vy))))
+(set gl-pointvertex (proc (v) (glVertex2f (v 0) (v 1))))
+
+(set gl-draw-rectangle
+  (proc (start size)
+    (local (vx vy)
+      (begin
+        (set start (map real start))
+        (set vx [ (start 0) (+ (start 0) (size 0)) ])
+        (set vy [ (start 1) (+ (start 1) (size 1)) ])
+
+        (glBegin GL_QUADS)
+        (glVertex2f (vx 0) (vy 0))
+        (glVertex2f (vx 1) (vy 0))
+        (glVertex2f (vx 1) (vy 1))
+        (glVertex2f (vx 0) (vy 1))	
+        (glEnd)))))
+
+(set gl-draw-textured-rectangle
+  (proc (start size texname texorig texscale)
+    (local (vx vy tx ty)
+      (begin
+        (set start (map real start))
+        (set vx [ (start 0) (+ (start 0) (size 0)) ])
+        (set vy [ (start 1) (+ (start 1) (size 1)) ])
+        (set tx (map (proc (vx) (/ (- vx (texorig 0)) (texscale 0))) vx))
+        (set ty (map (proc (vy) (/ (- vy (texorig 1)) (texscale 1))) vy))
+        # (display start size texname texorig texscale)
+        # (display vx vy tx ty)
+
+        (glEnable GL_TEXTURE_2D)
+        (glBindTexture GL_TEXTURE_2D texname)
+
+        (glBegin GL_QUADS)
+        (glTexCoord2f (tx 0) (ty 0))	(glVertex2f (vx 0) (vy 0))
+        (glTexCoord2f (tx 1) (ty 0))	(glVertex2f (vx 1) (vy 0))
+        (glTexCoord2f (tx 1) (ty 1))	(glVertex2f (vx 1) (vy 1))
+        (glTexCoord2f (tx 0) (ty 1))	(glVertex2f (vx 0) (vy 1))	
+        (glEnd)
+        (glDisable GL_TEXTURE_2D)))))
+
+(set gl-draw-regular-polygon
+  (proc (center radius slices)
+    (local (vals)
+      (begin
+        (set center (map real center))
+        (set angles 
+          (map (proc (s) (* 2.0 pi (/ s slices)))
+               (make-series 0.0 (+ slices 1) 1.0)))
+        (set vx (map (proc (a) (+ (center 0) (* (cos a) (radius 0)))) angles))
+        (set vy (map (proc (a) (+ (center 1) (* (sin a) (radius 1)))) angles))
+        (glBegin GL_TRIANGLE_FAN)
+        (glVertex2f (center 0) (center 1))
+        (map glVertex2f vx vy)
+        (glEnd)))))
+
+(set gl-draw-textured-regular-polygon
+  (proc (center radius slices texname texorig texscale)
+    (local (vals)
+      (begin
+        (set center (map real center))
+        (set angles 
+          (map (proc (s) (* 2.0 pi (/ s slices)))
+               (make-series 0.0 (+ slices 1) 1.0)))
+        (set vx (map (proc (a) (+ (center 0) (* (cos a) (radius 0)))) angles))
+        (set vy (map (proc (a) (+ (center 1) (* (sin a) (radius 1)))) angles))
+        (set tx (map (proc (vx) (/ (- vx (texorig 0)) (texscale 0))) vx))
+        (set ty (map (proc (vy) (/ (- vy (texorig 1)) (texscale 1))) vy))
+        (glEnable GL_TEXTURE_2D)
+        (glBindTexture GL_TEXTURE_2D texname)
+
+        (glBegin GL_TRIANGLE_FAN)
+        (glTexCoord2f (/ (- (center 0) (texorig 0)) (texscale 0))
+                      (/ (- (center 1) (texorig 1)) (texscale 1)))
+        (glVertex2f (center 0) (center 1))
+        (map gl-texvertex tx ty vx vy)
+        (glEnd)
+        (glDisable GL_TEXTURE_2D)))))
+
+(set gl-draw-line
+  (proc (points)
+    (begin
+      (glBegin GL_LINE_STRIP)
+      (map gl-pointvertex points)
+      (glEnd))))
+
+(set gl-draw-points
+  (proc (points)
+    (begin
+      (glBegin GL_POINTS)
+      (map gl-pointvertex points)
+      (glEnd))))
+
+(set gl-transform-object
+  (proc (scale rot trans)
+    (begin
+      (glTranslatef (trans 0) (trans 1) 0.0)
+      (glRotatef rot 0.0 0.0 1.0)
+      (glScalef (scale 0) (scale 1) 0.0))))
+
+###########################################################################
+# texture stuff
+
+(set gl-pow2-dim
+  (proc (olddim)
+    (local (ct)
+      (begin
+        (set ct 0)
+        (set olddim (- olddim 1))
+        (while (> olddim 0)
+          (begin
+            (set ct (+ ct 1))
+            (set olddim (>> olddim 1))))
+        (<< 1 ct)))))
+
+(set gl-find-texture-size
+  (proc (size)
+    (map gl-pow2-dim size)))
+
+(set gl-create-texture
+  (proc ()
+    (local (texnameaddr texname)
+      (begin
+        (set texnameaddr (malloc (sizeof uint32)))
+        # (print "Attempting to create texture...")
+        (glGenTextures 1 texnameaddr)
+        (set texname (texnameaddr uint32))
+        (free texnameaddr)
+        # (print "Created texture number: " texname newline)
+        (gl-set-texture-parameters texname True False)
+        texname))))
+
+(set gl-delete-texture
+  (proc (texname)
+    (local (texnameaddr)
+      (begin
+        (set texnameaddr (malloc (sizeof uint32)))
+        (texnameaddr uint32 texname)
+        (glDeleteTextures 1 texnameaddr)
+        # (print "Deleted texture number: " texname newline)
+        (free texnameaddr)))))
+
+(set gl-set-texture-parameters
+  (proc (texname wrap interp)
+    (begin
+      (glBindTexture GL_TEXTURE_2D texname)
+      (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_WRAP_S
+                       (if wrap GL_REPEAT GL_CLAMP))
+      (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_WRAP_T 
+                       (if wrap GL_REPEAT GL_CLAMP))
+      (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER 
+                       (if interp GL_LINEAR GL_NEAREST))
+      (glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER 
+                       (if interp GL_LINEAR GL_NEAREST)))))
+
+(set gl-calculate-alignment
+  (proc (rowlen)
+    (cond 
+     ((= 0 (mod rowlen 8)) 8)
+     ((= 0 (mod rowlen 4)) 4)
+     ((= 0 (mod rowlen 2)) 2)
+     (True 1))))
+
+(set gl-get-image-format
+  [ Null GL_LUMINANCE GL_LUMINANCE_ALPHA GL_RGB GL_RGBA ])
+
+(set gl-generate-texture-image
+  (proc (texname image scale internalformat)
+    (local (chans origsize texsize intimage teximage texsubimage intalign texalign format)
+      (begin
+        (glBindTexture GL_TEXTURE_2D texname)
+	(set chans (image buf-chans))
+        (set origsize (image buf-dims))
+        (set texsize (gl-find-texture-size (map integer (* scale origsize))))
+	(set intalign (gl-calculate-alignment (* chans (origsize 0))))
+	(set texalign (gl-calculate-alignment (* chans (texsize 0))))
+	(set intimage (gl-new-image chans origsize))
+	(set teximage (gl-new-image chans texsize))
+	(set format (gl-get-image-format chans))
+	(image-transfer image intimage)
+	(glPixelStorei GL_UNPACK_ALIGNMENT intalign)
+	(glPixelStorei GL_PACK_ALIGNMENT texalign)
+	(gluScaleImage format (origsize 0) (origsize 1) GL_UNSIGNED_BYTE 
+		       ((intimage buf-addrs) 0) (texsize 0) (texsize 1)
+		       GL_UNSIGNED_BYTE ((teximage buf-addrs) 0))
+	# (easywin-create teximage "texture" [700 100])
+	# (display teximage)
+	(glPixelStorei GL_UNPACK_ALIGNMENT texalign)
+	(glTexImage2D GL_TEXTURE_2D 0 internalformat (texsize 0) (texsize 1)
+		      0 format GL_UNSIGNED_BYTE ((teximage buf-addrs) 0))
+	(free-image intimage)
+	(free-image teximage)
+        texname))))
+
+(set gl-set-texture-image
+  (proc (texname image internalformat)
+    (begin
+      (glBindTexture GL_TEXTURE_2D texname)
+      (glPixelStorei GL_UNPACK_ALIGNMENT 
+		     (gl-calculate-alignment (* (image buf-chans) ((image buf-dims) 0))))
+      (glTexImage2D GL_TEXTURE_2D 0 internalformat 
+		    ((image buf-dims) 0) ((image buf-dims) 1)
+                    0 (gl-get-image-format (image buf-chans))
+		    GL_UNSIGNED_BYTE ((image buf-addrs) 0)))))
+
+(set gl-update-texture-image
+  (proc (texname image pos)
+    (begin
+      (glBindTexture GL_TEXTURE_2D texname)
+      (glPixelStorei GL_UNPACK_ALIGNMENT 	
+		     (gl-calculate-alignment (* (image buf-chans) ((image buf-dims) 0))))
+      (if (!= ((image buf-steps) 1) (* ((image buf-dims) 0) (image buf-chans)))
+          (glPixelStorei GL_UNPACK_ROW_LENGTH (/ ((image buf-steps) 1) (image buf-chans))))
+      (glTexSubImage2D GL_TEXTURE_2D 0 (pos 0) (pos 1) 
+                       ((image buf-dims) 0) ((image buf-dims) 1)
+                       (gl-get-image-format (image buf-chans))
+		       GL_UNSIGNED_BYTE ((image buf-addrs) 0))
+      (glPixelStorei GL_UNPACK_ROW_LENGTH 0))))
+
+###########################################################################
+# new font stuff
+
+(load "imagefont.isis")
+
+(set gl-load-font
+  (proc (fontname fontheight)
+    (local (font pageimage pagesize rgbaimage rgbimage alphaimage texname poslist)
+      (if (set font (imagefont-load fontname fontheight))
+	  (begin
+	    (set pageimage (font 5))
+	    (set pagesize (pageimage buf-dims))
+	    (set rgbaimage (gl-new-image 4 pagesize))
+	    (set rgbimage (isolate-channels 0 2 rgbaimage))
+	    (set alphaimage (vertical-mirror-image (isolate-channel 3 rgbaimage)))
+	    
+	    (image-fill-constant 255 rgbimage)
+	    (image-transfer pageimage alphaimage)
+	    
+	    (set texname (gl-create-texture))
+	    (gl-set-texture-parameters texname False True)
+	    (gl-set-texture-image texname rgbaimage GL_RGBA)
+	    
+	    (set poslist (map (proc (p s) (map real [ (p 0) (- (pagesize 1) (p 1) (s 1)) ]))
+			      (font 8) (font 9)))
+	    
+	    (free-image pageimage)
+	    (set font (change-item 10 (map real (font 10)) font))
+	    (set font (change-item 8 poslist font))
+	    (set font (change-item 5 texname font)))))))
+
+(set gl-measure-text
+  (proc (text font fixed hsc vsc)
+    (local (widthlist startchar fontheight spacewidth maxwidth thiswidth numlines charwidth)
+      (begin
+        (set widthlist (font 6))
+        (set startchar (integer (font 3)))
+        (set fontheight (font 1))
+        (set spacewidth (font 2))
+        (set text (map integer text))
+        (set maxwidth 0.0)
+        (set thiswidth 0.0)
+        (set numlines 1)
+        (map (proc (c)
+               (cond
+		((= c 10) 
+		 (begin
+		   (set numlines (+ numlines 1))
+		   (if (> thiswidth maxwidth) (set maxwidth thiswidth))
+		   (set thiswidth 0.0)))
+		((< c startchar) Null)
+		(True 
+		 (begin 
+		   (set charwidth (if fixed spacewidth (widthlist (- c startchar))))
+		   (set thiswidth (+ thiswidth (* hsc charwidth)))))))
+             text)
+        (if (> thiswidth maxwidth) (set maxwidth thiswidth))
+        [ maxwidth (* vsc fontheight numlines) ]))))
+
+(set gl-draw-text
+  (proc (text font fixed hsc vsc startpos)
+    (local (fontheight startchar texname widthlist offsetlist poslist sizelist 
+		       spacewidth pagesize pos index size drawpos texpos vx vy tx ty)
+      (begin
+        (set fontheight (font 1))
+        (set startchar (integer (font 3)))
+        (set texname (font 5))
+        (set widthlist (font 6))
+        (set offsetlist (font 7))
+        (set poslist (font 8))
+        (set sizelist (font 9))
+        (set spacewidth (font 7))
+        (set pagesize (font 10))
+	(set pos (set startpos (- startpos [(* 0.1 fontheight) 4.0])))
+        (set text (map integer text))
+        (glEnable GL_TEXTURE_2D)
+        (glBindTexture GL_TEXTURE_2D texname)
+        (glBegin GL_QUADS)
+        (map (proc (c)
+	       (cond 
+		((= c 10) (set pos [ (startpos 0) (- (pos 1) (* vsc fontheight)) ]))
+		((< c startchar) Null)
+		(True 
+		 (begin 
+		   (set index (- c startchar))
+		   (set size (sizelist index))
+		   (set drawpos (+ pos (offsetlist index)))  # assumes offset y will always be 0
+		   (set texpos (- drawpos (poslist index)))
+
+		   (set vx [ (drawpos 0) (+ (drawpos 0) (size 0)) ])
+		   (set vy [ (drawpos 1) (+ (drawpos 1) (size 1)) ])
+		   (set tx (map (proc (vx) (/ (- vx (texpos 0)) (pagesize 0))) vx))
+		   (set ty (map (proc (vy) (/ (- vy (texpos 1)) (pagesize 1))) vy))
+		   
+		   (glTexCoord2f (tx 0) (ty 0))	(glVertex2f (vx 0) (vy 0))
+		   (glTexCoord2f (tx 1) (ty 0))	(glVertex2f (vx 1) (vy 0))
+		   (glTexCoord2f (tx 1) (ty 1))	(glVertex2f (vx 1) (vy 1))
+		   (glTexCoord2f (tx 0) (ty 1))	(glVertex2f (vx 0) (vy 1))	
+		   
+		   (set pos (+ pos [ (* hsc (if fixed spacewidth (widthlist index))) 0.0 ]))))))
+             text)
+        (glEnd)
+	(glDisable GL_TEXTURE_2D)))))

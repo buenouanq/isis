@@ -1,0 +1,93 @@
+#########################################################################
+# Program for Colorkinetics light module control, multiple lights
+# By Christian Baekkelund (draco@mit.edu)
+# fixed up a little by stefan
+
+(set dmx-min-bytes (+ 24 1))  # 24 channels + start code
+(set dmx-max-bytes (+ 512 1)) # 512 channels + start code
+
+(set dmx-start 0)
+(set dmx-red   1)
+(set dmx-green 2)
+(set dmx-blue  3)
+(set dmx-start-code 0)
+
+#########################################################################
+# Initialize the serial port, settings required for PC-DMX protocol:
+#    115.2 kbps, 8 data bits, no stop bits, no parity, no flow control
+
+(set dmx-initialize
+  (proc (device-name)
+    (local (port)
+      (begin
+        (set port (open-update device-name))
+	(initialize-serial-port port 115200 8 2 Null False)
+	(set dmx-buf (malloc dmx-max-bytes))
+	(while (pending port) (read-raw port 1 dmx-buf))  # flush port
+	(set-memory dmx-max-bytes 255 dmx-buf)	
+	port))))
+
+#########################################################################
+# Send a dmx-packet to the port.
+# THIS SHOULD ONLY BE USED BY dmx-main AND NOT BY OUTSIDE PROGRAMS.
+
+(set dmx-send-packet
+  (proc (port len buf)
+    (begin
+      (drain port)
+#     (microsleep 1)
+      (send-break port 1)
+#     (microsleep 20)
+      (write-raw port len buf))))
+
+#########################################################################
+# The main DMX handler
+# pass it a port and a list:  [ [ chan R G B ] ... ]
+
+(set dmx-main
+  (proc (port chan-and-colors-list)
+    (local (bytes-sent chan R G B)
+      (begin
+	(dmx-buf c-byte dmx-start-code)
+	(map (proc (chan-and-colors)
+	       (if (!= (length chan-and-colors) 4)
+		   (print newline "* Expected [ channel R G B ] but got " chan-and-colors newline)
+		   (dmx-buf [c-byte 3 (+ 1 (* (chan-and-colors 0) 3))]
+			    (allbutfirst 1 chan-and-colors))))
+	     chan-and-colors-list)
+	(dmx-send-packet port dmx-max-bytes dmx-buf)))))
+
+#########################################################################
+# An easy connection...
+# returns:  port
+
+(set dmx-server-info-filename "/mas/garden/isis/projects/lights/dmx-server.cfg")
+
+(set connect-to-dmx-server
+  (proc ()
+    (local (config-file server-name server-port port isis-data)
+      (begin
+	(print newline "Opening connection to DMX server...")
+	(set isis-data (allocate-memory 1))
+	(isis-data c-byte 0)
+	(set config-file (open-input dmx-server-info-filename))
+	(set server-name (read-string config-file))
+	(set server-port (eval (read-string config-file)))
+	(close config-file)
+	(set port (tcp-open server-name server-port))
+	(if (= port Null)
+	    (print "CONNECTION FAILED!" newline)
+	    (begin
+	      (write-raw port 1 isis-data)
+	      (print "connection established." newline)))
+	(free-memory isis-data)
+	port))))
+
+(set write-dmx-server-info
+  (proc (server-name server-port)
+    (local (config-file)
+      (begin
+	(set config-file (open-output dmx-server-info-filename))
+	(write-string config-file server-name newline)
+	(write-string config-file server-port newline)
+	(close config-file)))))

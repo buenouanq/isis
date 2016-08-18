@@ -1,0 +1,275 @@
+# Unix library routines
+# stefan agamanolis
+
+# ports
+
+(set unix-open-mode (bit-or S_IRUSR S_IWUSR S_IRGRP S_IWGRP S_IROTH S_IWOTH))
+
+(set open-input
+  (proc (filename)
+    (local (fd)
+      (if (!= Null (set fd (unix-open filename O_RDONLY unix-open-mode)))
+	  (unix-new-port-FD filename fd True False)))))
+
+(set open-output
+  (proc (filename)
+    (local (fd)
+      (if (!= Null (set fd (unix-open filename (bit-or O_WRONLY O_CREAT O_TRUNC) unix-open-mode)))
+	  (unix-new-port-FD filename fd False True)))))
+
+(set open-update
+  (proc (filename)
+    (local (fd)
+      (if (!= Null (set fd (unix-open filename O_RDWR unix-open-mode)))
+	  (unix-new-port-FD filename fd True True)))))
+
+(set pipe
+  (proc ()
+    (local (pres)
+      (if (set pres (unix-pipe)) 
+	  [ (unix-new-port-FD "Pipe In" (pres 0) True False)
+	    (unix-new-port-FD "Pipe Out" (pres 1) False True) ]))))
+
+(set dup
+  (proc args
+    (if (> (length args) 1)
+	(unix-dup (if (integer? (args 0)) (args 0) ((args 0) port-internal-id))
+		  (if (integer? (args 1)) (args 1) ((args 1) port-internal-id)))
+	(unix-dup (if (integer? (args 0)) (args 0) ((args 0) port-internal-id))))))
+
+(set read-ready-list
+  (proc args
+    (apply unix-multipending-FD 
+	   (change-item 0 (map (proc (p) (if (integer? p) p (p port-internal-id))) 
+			       (args 0))
+			args))))
+
+(set multipending read-ready-list)
+
+(set write-ready-list
+  (proc args
+    (apply unix-write-ready-list-FD 
+	   (change-item 0 (map (proc (p) (if (integer? p) p (p port-internal-id))) 
+			       (args 0))
+			args))))
+
+(set socket-option
+  (proc args
+    (apply unix-socket-option 
+	   (change-item 0 ((args 0) port-internal-id) args))))
+
+
+# tcp functions
+
+(set tcp-open
+  (proc args
+    (local (host portnum sock addr)
+      (cond 
+       ((or (< (length args) 1) 
+	    (not (set host (args 0))))
+	(print "** tcp-open: No host address specified" newline))
+       ((or (< (length args) 2) 
+	    (not (set portnum (args 1))))
+	(print "** tcp-open: No port number specified" newline))
+       ((and (not (integer-list? (set addr host))) 
+	     (not (set addr (lookup-hostname host))))
+	(print "** tcp-open: Unable to look up address for " host newline))
+       ((= Null (set sock (unix-socket sock-type-tcp)))
+	(print "** tcp-open: Error creating TCP socket" newline))
+       ((and (> (length args) 2)
+	     (= Null (unix-socket-option sock sock-option-nodelay (args 2))))
+	(print "** tcp-open: Error setting NODELAY" newline))
+       ((not (unix-connect sock addr portnum))
+	(begin
+	  (print "** tcp-open: Unable to connect to " host " port " portnum newline)
+	  (close sock)))
+       (True (unix-new-port-FD "TCP socket" sock True True))))))
+
+(set tcp-listen
+  (proc args
+    (local (portnum sock)
+      (cond 
+       ((or (< (length args) 1) 
+	    (not (set portnum (args 0))))
+	(print "** tcp-listen: No port number specified" newline))
+       ((= Null (set sock (unix-socket sock-type-tcp)))
+	(print "** tcp-listen: Error creating TCP socket" newline))
+       ((= Null (unix-socket-option sock sock-option-reuseaddr True))
+	(begin
+	  (print "** tcp-listen: Error setting REUSEADDR" newline)
+	  (close sock)))
+       ((= Null (unix-socket-option sock sock-option-keepalive True))
+	(begin
+	  (print "** tcp-listen: Error setting KEEPALIVE" newline)
+	  (close sock)))
+       ((not (unix-bind sock Null portnum))
+	(begin
+	  (print "** tcp-listen: Unable to bind to port number " portnum newline)
+	  (close sock)))
+       ((not (if (> (length args) 1) (unix-listen sock (args 2)) (unix-listen sock)))
+	(begin
+	  (print "** tcp-listen: Error listening on port number " portnum newline)
+	  (close sock)))
+       (True (unix-new-port-FD "TCP listen" sock True True))))))
+
+(set tcp-accept
+  (proc args
+    (local (servsock sock)
+      (cond
+       ((or (< (length args) 1) 
+	    (not (list? (args 0)))
+	    (= Null (set servsock ((args 0) port-internal-id))))
+	(print "** tcp-accept: Argument was not a listening port" newline))
+       ((= Null (set ainfo (unix-accept servsock)))
+	(print "** tcp-accept: Error accepting TCP connection" newline))
+       ((= Null (set sock (ainfo 0)))
+	(print "** tcp-listen: Error in accepted TCP socket" newline))
+       (True (begin
+	       (set tcp-accept-address (ainfo 1))
+	       (if (> (length args) 1)
+		   (unix-socket-option sock sock-option-nodelay (args 1)))
+	       (unix-new-port-FD "TCP socket" sock True True)))))))
+
+(set udp-open-output
+  (proc args
+    (local (host portnum sock addr)
+      (cond 
+       ((or (< (length args) 1) 
+	    (not (set host (args 0))))
+	(print "** udp-open: No host address specified" newline))
+       ((or (< (length args) 2) 
+	    (not (set portnum (args 1))))
+	(print "** udp-open: No port number specified" newline))
+       ((and (not (integer-list? (set addr host))) 
+	     (not (set addr (lookup-hostname host))))
+	(print "** udp-open: Unable to look up address for " host newline))
+       ((= Null (set sock (unix-socket sock-type-udp)))
+	(print "** udp-open: Error creating UDP socket" newline))
+       ((not (unix-connect sock addr portnum))
+	(begin
+	  (print "** udp-open: Unable to connect to " host " port " portnum newline)
+	  (close sock)))
+       (True (new-port "UDP socket" port-type-FD sock False True
+		       unix-close-FD (proc x Null) (proc x Null) unix-send-FD
+		       (proc x Null) (proc x Null) 
+		       (proc x False) unix-write-ready-FD (proc x Null)))))))
+
+(set udp-open-input
+  (proc args
+    (local (portnum sock)
+      (cond 
+       ((or (< (length args) 1) 
+	    (not (set portnum (args 0))))
+	(print "** udp-open: No port number specified" newline))
+       ((= Null (set sock (unix-socket sock-type-udp)))
+	(print "** udp-open: Error creating UDP socket" newline))
+       ((= Null (unix-socket-option sock sock-option-reuseaddr True))
+	(begin
+	  (print "** tcp-listen: Error setting REUSEADDR" newline)
+	  (close sock)))
+       ((not (unix-bind sock Null portnum))
+	(begin
+	  (print "** udp-open: Unable to bind to port number " portnum newline)
+	  (close sock)))
+       (True (new-port "UDP socket" port-type-FD sock True False
+		       unix-close-FD unix-recv-FD (proc x Null) (proc x Null)
+		       (proc x Null) (proc x Null) 
+		       unix-read-ready-FD (proc x False) (proc x Null)))))))
+
+# file functions
+
+(set file-info unix-file-info)
+
+(set file-size
+  (proc (filename)
+    (local (info)
+      (if (set info (file-info filename))
+	  (info file-info-size)))))
+
+(set file-type
+  (proc (filename)
+    (local (info)
+      (if (set info (file-info filename))
+	  (info file-info-type)))))
+
+(set file-accessible?
+  (proc (filename)
+    (if (file-info filename) True False)))
+
+# terminal functions
+
+(set set-tty-mode 
+  (proc args
+    (apply unix-terminal-setattr 
+	   (change-item 0 ((args 0) port-internal-id) args))))
+
+(set get-tty-mode 
+  (proc args
+    (apply unix-terminal-getattr 
+	   (change-item 0 ((args 0) port-internal-id) args))))
+
+(set send-break
+  (proc args
+    (apply unix-terminal-sendbreak 
+	   (change-item 0 ((args 0) port-internal-id) args))))
+
+(set drain
+  (proc args
+    (apply unix-terminal-drain 
+	   (change-item 0 ((args 0) port-internal-id) args))))
+
+(set initialize-serial-port
+  (proc (port baud databits stopbits parity flow)
+    (unix-terminal-setattr 
+     (port port-internal-id)
+     0 0 (bit-or tty-clocal tty-hupcl
+		 (if (input-port? port) tty-cread 0) 
+		 (switch databits
+		   (5 tty-cs5) (6 tty-cs6) (7 tty-cs7) (8 tty-cs8) (else 0))
+		 (switch stopbits
+		   (1 0) (2 tty-cstopb) (else 0))
+		 (switch parity
+		   ("even" tty-parenb) 
+		   ("odd" (bit-or tty-parenb tty-parodd))
+		   (else 0))
+		 (if flow tty-crtscts 0))
+     0 baud baud)))
+
+# process functions
+
+(set send-text-to-printer
+  (proc (text)
+    (local (pipeinfo iport oport pid)
+      (begin
+	(set pipeinfo (pipe))        # create pipe
+	(set iport (pipeinfo 0))     # this is the input end of the pipe
+	(set oport (pipeinfo 1))     # this is the output end of the pipe
+	
+	(if (= 0 (set pid (fork)))   # create new process
+	    (begin                   # if this is the child process,
+	      (close oport)          # output end of pipe not needed in the child
+	      (dup iport 0)          # duplicate input end into to the standard input (0)
+	      (exec "lpr")))         # execute the line printer program
+	
+	(close iport)                # input end of pipe not needed in the parent
+	(write-string oport text)    # write text to lpr process
+	(close oport)))))            # close output end of pipe
+
+(set send-data-to-printer
+  (proc (len buffer)
+    (local (pipeinfo iport oport pid)
+      (begin
+	(set pipeinfo (pipe))        # create pipe
+	(set iport (pipeinfo 0))     # this is the input end of the pipe
+	(set oport (pipeinfo 1))     # this is the output end of the pipe
+	
+	(if (= 0 (set pid (fork)))   # create new process
+	    (begin                   # if this is the child process,
+	      (close oport)          # output end of pipe not needed in the child
+	      (dup iport 0)          # duplicate input end into to the standard input (0)
+	      (exec "lpr")))         # execute the line printer program
+	
+	(close iport)                # input end of pipe not needed in the parent
+	(write-raw oport len buffer) # write buffer to lpr process
+	(close oport)))))            # close output end of pipe
+

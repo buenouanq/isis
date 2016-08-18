@@ -1,0 +1,28 @@
+# X windows helper functions -- uses image buffer protocol
+# Stefan Agamanolis, July 1996
+
+# Handles only BYTE sampled images.
+
+(set xwin-display-image
+  (proc args
+    (if (< (length args) 2)
+        (print "*** xwin-display-image: expects window handle and image\n")
+        (local (win buf buftype disppos)
+          (begin
+            (set win (args 0))
+            (set buf (args 1))
+            (set buftype (buf buf-type))
+            (set disppos (if (> (length args) 2) (args 2) [0 0]))
+            (if (< (buf buf-chans) 3)
+                (xwin-display win 
+                              disppos 
+                              (buf buf-dims) 
+                              (make-list 3 ((buf buf-addrs) 0))
+                              (buf buf-steps))
+                (xwin-display win 
+                              disppos 
+                              (buf buf-dims) 
+                              (buf buf-addrs)
+                              (buf buf-steps)))
+            buf)))))
+

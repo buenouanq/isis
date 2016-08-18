@@ -1,0 +1,29 @@
+# how can these expressions be improved?
+
+(if (= x y)
+    (if (= 3 z)
+        (if (= 1 r)
+            "correct"
+            "bozo")))
+
+(if (and (= x y) (= 3 z) (= 1 r))
+    (print "moneybag"))
+
+(cond
+ ((= x 1) "uno")
+ ((= x 2) "dos")
+ ((= x 3) "tres")
+ (True "impossible"))
+
+(set square-list
+  (proc (list)
+    (local (c len newlist)
+      (begin
+        (set c 0)
+        (set len (length list))
+        (set newlist [])
+        (while (< c len)
+          (begin
+            (set newlist (tail-insert (* (list c) (list c)) newlist))
+            (set c (+ c 1))))
+        newlist))))

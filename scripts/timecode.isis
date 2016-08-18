@@ -1,0 +1,45 @@
+# time code utilities
+
+(set normalize-timecode
+  (proc (timecode)
+    (local (h m s f)
+      (begin
+        (set h (timecode 0))
+        (set m (timecode 1))
+        (set s (timecode 2))
+        (set f (timecode 3))
+        (while (< f 0) (begin (set f (+ f 30)) (set s (- s 1))))
+        (while (> f 29) (begin (set f (- f 30)) (set s (+ s 1))))
+        (while (< s 0) (begin (set s (+ s 60)) (set m (- m 1))))
+        (while (> s 59) (begin (set s (- s 60)) (set m (+ m 1))))
+        (while (< m 0) (begin (set m (+ m 60)) (set h (- h 1))))
+        (while (> m 59) (begin (set m (- m 60)) (set h (+ h 1))))
+        (if (< h 0) (set h (+ h 24)))
+        (if (> h 23) (set h (- h 24)))
+        [ h m s f ] ))))
+
+(set timecode-to-frame
+  (proc (s t)
+    (local (diff)
+      (begin
+        (set diff (normalize-timecode (- t s)))
+        (+ (* (+ (* (+ (* (diff 0) 60) (diff 1)) 60) (diff 2)) 30) (diff 3))))))
+
+(set frame-to-timecode
+  (proc (f)
+    (local (h m s)
+      (begin
+	(set h (/ f 108000))
+	(set f (- f (* h 108000)))
+	(set m (/ f 1800))
+	(set f (- f (* m 1800)))
+	(set s (/ f 30))
+	(set f (- f (* s 30)))
+	[h m s f]))))
+
+(set timecode-to-text
+  (proc (tc)
+    (append (last 2 (append "0" (uneval (tc 1)))) ":" 
+	    (last 2 (append "0" (uneval (tc 2)))) ":" 
+	    (last 2 (append "0" (uneval (tc 3)))))))
+

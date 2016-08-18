@@ -1,0 +1,325 @@
+# LIST and TEXT utilities
+# written by Stefan Agamanolis, Christian Baekkelund and Jon Dakss
+
+###########################################################################
+# Case conversion functions
+
+(set casediff (- 'A' 'a'))
+
+(set tolower
+  (proc (c)
+    (if (and (character? c)
+             (>= (integer c) (integer 'A')) 
+             (<= (integer c) (integer 'Z'))) 
+        (- c casediff) 
+        c)))
+
+(set toupper
+  (proc (c)
+    (if (and (character? c)
+             (>= (integer c) (integer 'a')) 
+             (<= (integer c) (integer 'z'))) 
+        (+ c casediff) 
+        c)))
+
+(set upcase
+  (proc (arg)
+    (if (list? arg) (map upcase arg) (toupper arg))))
+
+(set downcase
+  (proc (arg)
+    (if (list? arg) (map downcase arg) (tolower arg))))
+
+
+###########################################################################
+# Searching functions
+
+# search finds an item in a list (or a character in a string)
+# returns the index of the first occurrence
+
+(set search
+  (proc (item list)
+    (local (len pos index)
+      (begin
+        (set len (length list))
+        (set pos 0)
+        (set index Null)
+        (while (and (= index Null) (< pos len))
+          (if (= item (list pos))
+              (set index pos)
+              (set pos (+ pos 1))))
+        index))))
+
+# search-all finds all occurrences of an item in a list
+# and returns them as a list of indices
+
+(set search-all
+  (proc (item list)
+    (local (len pos occ)
+      (begin
+        (set len (length list))
+        (set pos 0)
+        (set occ [])
+        (while (< pos len)
+          (begin
+            (if (= item (list pos)) (set occ (tail-insert pos occ)))
+            (set pos (+ pos 1))))
+        occ))))
+
+# search-list searches for an embedded occurrence of s in t, returns
+# starting index
+
+(set search-list
+  (proc (s t)
+    (local (slen tlen spos tpos startpos occ)
+      (begin
+        (set slen (length s))
+        (set tlen (length t))
+        (set spos 0)
+        (set tpos 0)
+        (set startpos 0)
+        (set occ Null)
+        (while (and (= occ Null) (< startpos tlen))
+          (begin
+            (set spos 0)
+            (set tpos startpos)
+            (while (and (< spos slen) (< tpos tlen) (= (s spos) (t tpos)))
+              (begin (set spos (+ spos 1))
+                     (set tpos (+ tpos 1))))
+            (if (= spos slen) (set occ startpos))
+            (set startpos (+ startpos 1))))
+        occ))))
+
+# Searches a file for a list
+
+(set search-file
+  (proc (search-string handle)
+    (local (first-char search-len ret-list buf test-string
+                       start-pos)
+      (begin
+        (set first-char (head search-string))
+        (set search-len (length search-string))
+        (set ret-list [])
+        (set buf (malloc (+ 1 (length search-string))))
+        (set test-string Null)
+        (set start-pos (tell handle))
+        (while (= (read-raw handle 1 buf) 1)
+          (if (= (buf c-char) first-char)
+              (begin
+                (set test-string [ (buf c-char) ])
+                (read-raw handle (- search-len 1) buf)
+                (set test-string (append test-string (buf [c-char (- search-len 1)])))
+                (if (= test-string search-string)
+                    (set ret-list (tail-insert (- (tell handle) search-len) ret-list))
+                    (seek-relative handle (* -1 (- search-len 1)))))))
+        (free buf)
+        (seek handle start-pos)
+        ret-list))))
+
+# some helpful aliases
+
+(set search-string search-list)
+
+
+###########################################################################
+# remove and replace functions
+
+# remove removes the first occurrence of the specified item from a list
+
+(set remove
+  (proc (item list)
+    (local (index)
+      (begin
+        (set index (search item list))
+        (if (!= index Null) (remove-item index list) list)))))
+
+# replace replaces the first occurrence of item with newitem in a list
+
+(set replace
+  (proc (item newitem list)
+    (local (index)
+      (begin
+        (set index (search item list))
+        (if (!= index Null) (change-item index newitem list) list)))))
+
+# remove-all removes all occurrances of the specified item from a list
+
+(set remove-all
+  (proc (item list)
+    (local (index)
+      (begin
+        (set index (search item list))
+        (if (= index Null) 
+            list
+            (append (sublist 0 (- index 1) list)
+                    (remove-all item (sublist (+ index 1) 
+                                              (- (length list) 1) 
+                                              list))))))))
+
+# replace-all replaces all occurrences of item with newitem in a list
+
+(set replace-all
+  (proc (item newitem list)
+    (local (index)
+      (begin
+        (set index (search item list))
+        (if (= index Null) 
+            list
+            (append (sublist 0 (- index 1) list) 
+                    [ newitem ]
+                    (replace-all item newitem (sublist (+ index 1) 
+                                                       (- (length list) 1) 
+                                                       list))))))))
+
+# remove-list removes all occurrences of the sequence of elements f in s
+
+(set remove-list
+  (proc (f s)
+    (local (index)
+      (begin
+        (set index (search-list f s))
+        (if (= index Null)
+            s
+            (append (sublist 0 (- index 1) s)
+                    (remove-list f (sublist (+ index (length f))
+                                            (- (length s) 1) 
+                                            s))))))))
+
+# replace-list replaces all occurrences of the sequence of elements f 
+#  with the sequence of elements t in s
+
+(set replace-list
+  (proc (f t s)
+    (local (index)
+      (begin
+        (set index (search-list f s))
+        (if (= index Null)
+            s
+            (append (sublist 0 (- index 1) s) t
+                    (replace-list f t (sublist (+ index (length f))
+                                               (- (length s) 1) 
+                                               s))))))))
+
+# some helpful aliases
+
+(set remove-string remove-list)
+(set replace-string replace-list)
+
+
+###########################################################################
+# additional list manipulation functions
+
+(set min (proc args (args (foremost < args))))
+(set max (proc args (args (foremost > args))))
+
+(set reorder 
+  (proc (indexes list)
+    (map (proc (i) (list i)) indexes)))
+
+(set remove-items
+  (proc (indexes list)
+    (tail (map (proc (i) (set list (remove-item i list)))
+               (sort > indexes)))))
+
+(set change-items
+  (proc (indexes items list)
+    (tail (map (proc (i n) (set list (change-item i n list)))
+               indexes items))))
+
+(set assoc
+  (proc (item list)
+    (local (len pos)
+      (begin
+        (set len (length list))
+        (set pos 0)
+        (while (and (< pos len) (!= ((list pos) 0) item))
+          (set pos (+ pos 1)))
+        (if (= pos len) Null (list pos))))))
+
+# string-to-word-list separates a string to a list of words with no spaces
+
+(set string-to-word-list
+  (proc (str)
+    (local (wl len wordstart wordend)
+      (begin
+        (set wl [])
+        (set len (length str))
+        (set wordstart 1)
+        (set wordend 0)
+        (while (< wordstart len)
+          (begin
+            (set wordstart wordend)
+            (while (and (< wordstart len) (= (str wordstart) ' '))
+              (set wordstart (+ wordstart 1)))
+            (set wordend wordstart)
+            (while (and (< wordend len) (!= (str wordend) ' '))
+              (set wordend (+ wordend 1)))
+            (if (!= wordstart wordend)
+                (set wl (tail-insert (sublist wordstart (- wordend 1) str) 
+                                     wl)))))
+        wl))))
+
+# make-series makes a list that starts with s, contains n items, where
+# each sucessive item is i greater than the last
+
+(set make-series
+  (proc (s n i)
+    (begin
+      (set s (- s i))
+      (map (proc (x) (set s (+ s i))) (make-list n Null)))))
+
+# string-to-line-list takes a text string and chops it into lines of
+# text whose lengths are less than maxlinelength.  the only exception
+# is if there is a word in the text which is itself longer than
+# maxlinelength, in which case it is given its own line and is not
+# truncated.  it returns a list containing the lines of text.
+
+(set string-to-line-list
+  (proc (maxlinelength text)
+    (local (linearray textline wordlist)
+      (begin
+        (set wordlist (string-to-word-list text))
+        (set linearray [])
+        (set textline "")
+        (while (or (> (length wordlist) 0) 
+                   (> (length textline) 0))
+          (begin
+            (if (> (length wordlist) 0)
+                (if (and (<= (+ (length textline) 
+                                (+ (length (head wordlist)) 1)) 
+                             maxlinelength))
+                    (begin
+                      (if (> (length textline) 0) 
+                          (set textline (append textline " ")))
+                      (set textline (append textline (head wordlist)))
+                      (set wordlist (allbutfirst 1 wordlist)))
+                    (begin
+                      (if (or (< (length (head wordlist)) maxlinelength) 
+                              (> (length textline) 0))
+                          (set linearray (tail-insert textline linearray))
+                          (begin
+                            (set linearray 
+                              (tail-insert (head wordlist) linearray))
+                            (set wordlist (allbutfirst 1 wordlist))))
+                      (set textline "")))
+                (begin
+                  (set linearray (tail-insert textline linearray))
+                  (set textline "")))))
+        linearray))))
+
+(set fill-text
+  (proc (fillcol text)
+    (local (ilist slist elist linelist)
+      (begin
+	(set ilist (search-all newline text))
+	(set slist (head-insert 0 (map (proc (x) (+ x 1)) ilist)))
+	(set elist (tail-insert (- (length text) 1) (map (proc (x) (- x 1)) ilist)))
+	(set linelist (map (proc (s e) (sublist s e text)) slist elist))
+	(set linelist 
+	  (map (proc (line)
+		 (if (> (length line) fillcol)
+		     (apply append (map (proc (x) (tail-insert newline x))
+					(string-to-line-list fillcol line)))
+		     (tail-insert newline line)))
+	       linelist))
+	(set text (allbutlast 1 (apply append linelist)))))))

@@ -1,0 +1,800 @@
+# Improc library helper procedures
+# Stefan Agamanolis
+
+(set image-copy
+  (proc (buf)
+    (image-transfer buf (new-image (buf buf-type) 
+                                   (buf buf-chans) 
+                                   (buf buf-dims)))))
+
+(set image-transfer
+  (proc (buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-transfer" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-transfer-byte)
+                        (c-int improc-transfer-int)
+                        (c-short improc-transfer-short) 
+                        (c-long improc-transfer-long)
+                        (c-float improc-transfer-float)
+                        (c-double improc-transfer-double)))
+            (if func 
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-transfer" buf1 buf2))
+            buf2)))))
+
+(set image-transfer-range
+  (proc (low high buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-transfer-range" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-transfer-range-byte)
+                        (c-int improc-transfer-range-int) 
+                        (c-long improc-transfer-range-long) 
+                        (c-float improc-transfer-range-float)
+                        (c-double improc-transfer-range-double)))
+            (if func 
+                (func low high
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-transfer-range" buf1 buf2))
+            buf2)))))
+
+(set image-transfer-range-rgb
+  (proc (rlow rhigh glow ghigh blow bhigh buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) 3))
+        (image-buf-error "image-transfer-range-rgb" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-transfer-range-3ch-byte)
+                        (c-int improc-transfer-range-3ch-int)
+                        (c-long improc-transfer-range-3ch-long)
+                        (c-float improc-transfer-range-3ch-float)
+                        (c-double improc-transfer-range-3ch-double)))
+            (if func 
+                (func rlow rhigh
+                      glow ghigh
+                      blow bhigh
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-transfer-range-rgb" buf1 buf2))
+            buf2)))))
+
+(set image-composite
+  (proc (ibuf abuf obuf)
+    (if (or (!= (ibuf buf-dims) (abuf buf-dims) (obuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans)))
+        (image-buf-error "image-composite" ibuf abuf obuf)
+        (improc-composite (ibuf buf-dims)
+                          (ibuf buf-addrs) 
+                          (ibuf buf-steps) 
+                          (abuf buf-addrs) 
+                          (abuf buf-steps)
+                          (obuf buf-addrs) 
+                          (obuf buf-steps)))))
+
+(set image-composite-constalpha
+  (proc (constalpha ibuf obuf)
+    (if (or (!= (ibuf buf-dims) (obuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans)))
+        (image-buf-error "image-composite-constalpha" ibuf obuf)
+        (improc-composite-constalpha constalpha
+                                     (ibuf buf-dims)
+                                     (ibuf buf-addrs) 
+                                     (ibuf buf-steps) 
+                                     (obuf buf-addrs) 
+                                     (obuf buf-steps)))))
+
+(set image-composite-remapalpha
+  (proc (remap ibuf abuf obuf)
+    (if (or (!= (ibuf buf-dims) (abuf buf-dims) (obuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans)))
+        (image-buf-error "image-composite-remapalpha" ibuf abuf obuf)
+        (improc-composite-remapalpha remap
+                                     (ibuf buf-dims)
+                                     (ibuf buf-addrs) 
+                                     (ibuf buf-steps) 
+                                     (abuf buf-addrs) 
+                                     (abuf buf-steps)
+                                     (obuf buf-addrs) 
+                                     (obuf buf-steps)))))
+
+(set image-scale
+  (proc (ibuf obuf xremap yremap)
+    (if (!= (ibuf buf-chans) (obuf buf-chans))
+        (image-buf-error "image-scale" ibuf obuf)
+        (begin
+          (improc-scale-byte (ibuf buf-dims) 
+                             (ibuf buf-addrs) 
+                             (ibuf buf-steps)
+                             (obuf buf-dims) 
+                             (obuf buf-addrs) 
+                             (obuf buf-steps)
+                             xremap 
+                             yremap)
+          obuf))))
+
+(set image-scale-range
+  (proc (low high ibuf obuf xremap yremap)
+    (if (!= (ibuf buf-chans) (obuf buf-chans))
+        (image-buf-error "image-scale-range" ibuf obuf)
+        (begin
+          (improc-scale-range-byte low high
+                                   (ibuf buf-dims) 
+                                   (ibuf buf-addrs) 
+                                   (ibuf buf-steps)
+                                   (obuf buf-dims) 
+                                   (obuf buf-addrs) 
+                                   (obuf buf-steps)
+                                   xremap 
+                                   yremap)
+          obuf))))
+
+(set image-scale-composite
+  (proc (ibuf abuf obuf xremap yremap)
+    (if (or (!= (ibuf buf-dims) (abuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans)))
+        (image-buf-error "image-scale-composite" ibuf abuf obuf)
+        (improc-scale-composite (ibuf buf-dims)
+                                (ibuf buf-addrs) 
+                                (ibuf buf-steps) 
+                                (abuf buf-addrs) 
+                                (abuf buf-steps)
+                                (obuf buf-dims) 
+                                (obuf buf-addrs) 
+                                (obuf buf-steps)
+                                xremap
+                                yremap))))
+
+(set image-scale-composite-constalpha
+  (proc (constalpha ibuf obuf xremap yremap)
+    (if (!= (ibuf buf-chans) (obuf buf-chans))
+        (image-buf-error "image-scale-composite-constalpha" ibuf obuf)
+        (improc-scale-composite-constalpha constalpha
+                                           (ibuf buf-dims)
+                                           (ibuf buf-addrs) 
+                                           (ibuf buf-steps) 
+                                           (obuf buf-dims) 
+                                           (obuf buf-addrs) 
+                                           (obuf buf-steps)
+                                           xremap
+                                           yremap))))
+
+(set image-scale-composite-remapalpha
+  (proc (remap ibuf abuf obuf xremap yremap)
+    (if (or (!= (ibuf buf-dims) (abuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans)))
+        (image-buf-error "image-scale-composite-remapalpha" ibuf abuf obuf)
+        (improc-scale-composite-remapalpha remap
+                                           (ibuf buf-dims)
+                                           (ibuf buf-addrs) 
+                                           (ibuf buf-steps) 
+                                           (abuf buf-addrs) 
+                                           (abuf buf-steps)
+                                           (obuf buf-dims) 
+                                           (obuf buf-addrs) 
+                                           (obuf buf-steps)
+                                           xremap
+                                           yremap))))
+
+(set image-convert
+  (proc (buf1 buf2)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-convert" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-byte-byte) 
+                           (c-int improc-convert-byte-int) 
+                           (c-short improc-convert-byte-short) 
+                           (c-long improc-convert-byte-long) 
+                           (c-float improc-convert-byte-float)
+                           (c-double improc-convert-byte-double)))
+                        (c-short 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-short-byte) 
+                           (c-int improc-convert-short-int)
+                           (c-short improc-convert-short-short) 
+                           (c-long improc-convert-short-long)
+                           (c-float improc-convert-short-float)
+                           (c-double improc-convert-short-double)))
+                        (c-int 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-int-byte) 
+                           (c-int improc-convert-int-int) 
+                           (c-short improc-convert-int-short) 
+                           (c-long improc-convert-int-long) 
+                           (c-float improc-convert-int-float)
+                           (c-double improc-convert-int-double)))
+                        (c-long 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-long-byte) 
+                           (c-int improc-convert-long-int) 
+                           (c-short improc-convert-long-short) 
+                           (c-long improc-convert-long-long) 
+                           (c-float improc-convert-long-float)
+                           (c-double improc-convert-long-double)))
+                        (c-float 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-float-byte) 
+                           (c-int improc-convert-float-int) 
+                           (c-short improc-convert-float-short) 
+                           (c-long improc-convert-float-long) 
+                           (c-float improc-convert-float-float)
+                           (c-double improc-convert-float-double)))
+                        (c-double 
+                         (switch (buf2 buf-type)
+                           (c-byte improc-convert-double-byte) 
+                           (c-int improc-convert-double-int) 
+                           (c-short improc-convert-double-short) 
+                           (c-long improc-convert-double-long)
+                           (c-float improc-convert-double-float)
+                           (c-double improc-convert-double-double)))))
+            (if func 
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-convert" buf1 buf2))
+            buf2)))))
+
+(set image-gainbias
+  (proc (gain bias buf1 buf2)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-gainbias" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch [ (buf1 buf-type) (buf2 buf-type) ]
+                        ([c-byte c-byte] improc-gainbias-byte)
+                        ([c-int c-int] improc-gainbias-int)
+                        ([c-long c-long] improc-gainbias-long)
+                        ([c-float c-float] improc-gainbias-float)
+                        ([c-double c-double] improc-gainbias-double)
+                        ([c-byte c-short] improc-gainbias-byte-short) 
+                        ([c-byte c-int] improc-gainbias-byte-int)
+                        ([c-byte c-float] improc-gainbias-byte-float)
+                        ([c-byte c-double] improc-gainbias-byte-double) 
+                        ([c-short c-byte] improc-gainbias-short-byte) 
+                        ([c-short c-short] improc-gainbias-short)
+                        ([c-short c-int] improc-gainbias-short-int)
+                        ([c-short c-float] improc-gainbias-short-float)
+                        ([c-short c-double] improc-gainbias-short-double)))
+            (if func 
+                (func gain bias
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-gainbias" buf1 buf2))
+            buf2)))))
+
+(set image-remap-intensity
+  (proc (remap buf1 buf2)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-remap-intensity" buf1 buf2)
+        (begin 
+          (improc-remap-intensity (buf1 buf-dims)
+                                  (buf1 buf-addrs) 
+                                  (buf1 buf-steps) 
+                                  (buf2 buf-addrs) 
+                                  (buf2 buf-steps)
+                                  remap)
+          buf2))))
+
+(set image-fill-constant
+  (proc (const buf1)
+    (local (func)
+      (begin
+        (set func (switch (buf1 buf-type) 
+                    (c-byte improc-fill-constant-byte) 
+                    (c-int improc-fill-constant-int)
+                    (c-long improc-fill-constant-long)
+                    (c-float improc-fill-constant-float)
+                    (c-double improc-fill-constant-double)))
+        (if func 
+            (func const
+                  (buf1 buf-dims)
+                  (buf1 buf-addrs) 
+                  (buf1 buf-steps))
+            (image-type-error "image-fill-constant" buf1 buf2))
+        buf1))))
+
+(set image-add
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-add" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func 
+              (switch [ (buf1 buf-type) (buf2 buf-type) (buf3 buf-type) ]
+                ([c-byte c-byte c-byte] improc-add-byte) 
+                ([c-byte c-int c-byte] improc-add-byte-int-byte) 
+                ([c-byte c-int c-int] improc-add-byte-int-int) 
+                ([c-int c-int c-int] improc-add-int)
+                ([c-double c-double c-double] improc-add-double)))
+            (if func
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-add" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-subtract
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-subtract" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func 
+              (switch [ (buf1 buf-type) (buf2 buf-type) (buf3 buf-type) ]
+                ([c-byte c-byte c-byte] improc-subtract-byte) 
+                ([c-byte c-int c-byte] improc-subtract-byte-int-byte) 
+                ([c-int c-int c-int] improc-subtract-int)
+                ([c-double c-double c-double] improc-subtract-double)))
+            (if func
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-subtract" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-diff
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-diff" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func 
+              (switch [ (buf1 buf-type) (buf2 buf-type) (buf3 buf-type) ]
+                ([c-byte c-byte c-byte] improc-diff-byte) 
+                ([c-byte c-int c-byte] improc-diff-byte-int-byte) 
+                ([c-int c-int c-int] improc-diff-int)
+                ([c-double c-double c-double] improc-diff-double)))
+            (if func
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-diff" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-multiply
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-multiply" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func 
+              (switch [ (buf1 buf-type) (buf2 buf-type) (buf3 buf-type) ]
+                ([c-byte c-byte c-byte] improc-multiply-byte) 
+                ([c-byte c-int c-byte] improc-multiply-byte-int-byte) 
+                ([c-int c-int c-int] improc-multiply-int)
+                ([c-double c-double c-double] improc-multiply-double)))
+            (if func
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-multiply" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-divide
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-divide" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func 
+              (switch [ (buf1 buf-type) (buf2 buf-type) (buf3 buf-type) ]
+                ([c-byte c-byte c-byte] improc-divide-byte) 
+                ([c-byte c-int c-byte] improc-divide-byte-int-byte) 
+                ([c-int c-int c-int] improc-divide-int)
+                ([c-double c-double c-double] improc-divide-double)))
+            (if func
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-divide" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-maximum
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type) (buf3 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-maximum" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-maximum-byte)
+                        (c-int improc-maximum-int)
+                        (c-double improc-maximum-double)))
+            (if func 
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-maximum" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-minimum
+  (proc (buf1 buf2 buf3)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type) (buf3 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims) (buf3 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans) (buf3 buf-chans)))
+        (image-buf-error "image-minimum" buf1 buf2 buf3)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-minimum-byte)
+                        (c-int improc-minimum-int)
+                        (c-double improc-minimum-double)))
+            (if func 
+                (func (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps)
+                      (buf3 buf-addrs) 
+                      (buf3 buf-steps))
+                (image-type-error "image-minimum" buf1 buf2 buf3))
+            buf3)))))
+
+(set image-filter-1d
+  (proc (taps centertap mirror buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-filter-1d" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type) 
+                        (c-byte improc-filter-1d-byte)
+                        (c-short improc-filter-1d-short)))
+            (if func
+                (func taps centertap mirror
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-filter-1d" buf1 buf2))
+            buf2)))))
+
+(set image-filter-2d
+  (proc (taps centertap mirror buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-filter-2d" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type) 
+                        (c-byte improc-filter-2d-byte)))
+            (if func
+                (func taps centertap mirror
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-filter-2d" buf1 buf2))
+            buf2)))))
+
+(set image-affine-trans
+  (proc (params reverse buf1 buf2)
+    (if (or (!= (buf1 buf-type) (buf2 buf-type))
+            (!= (buf1 buf-chans) (buf2 buf-chans)))
+        (image-buf-error "image-affine-trans" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte improc-affine-trans-byte)))
+            (if func
+                (func params reverse
+                      (buf1 buf-dims)
+                      (buf1 buf-addrs) 
+                      (buf1 buf-steps) 
+                      (buf2 buf-dims)
+                      (buf2 buf-addrs) 
+                      (buf2 buf-steps))
+                (image-type-error "image-affine-trans" buf1 buf2))
+            buf2)))))
+
+(set image-warp-map
+  (proc (params srcsize warpbuf)
+    (begin
+      (improc-affine-warp-map params
+                              (warpbuf buf-dims)
+                              (warpbuf buf-addrs) 
+                              (warpbuf buf-steps)
+                              srcsize)
+      warpbuf)))
+
+(set image-warp
+  (proc (interp-flag ibuf obuf warpbuf)
+    (if (or (!= (warpbuf buf-dims) (obuf buf-dims))
+            (!= (ibuf buf-chans) (obuf buf-chans))
+            (!= (warpbuf buf-chans) 2))
+        (image-buf-error "image-warp" ibuf obuf warpbuf)
+        (begin
+          (improc-warp-image (ibuf buf-addrs) 
+                             (ibuf buf-steps) 
+                             (obuf buf-addrs) 
+                             (obuf buf-steps)
+                             (warpbuf buf-addrs) 
+                             (warpbuf buf-steps)
+                             (warpbuf buf-dims)
+                             (if interp-flag 1 0))
+          obuf))))
+
+(set image-bounding-box
+  (proc (low high buf)
+    (improc-bounding-box low high
+                         (buf buf-dims)
+                         (buf buf-addrs)
+                         (buf buf-steps))))
+
+(set image-bounding-box-rgb
+  (proc (rlow rhigh glow ghigh blow bhigh buf)
+    (if (!= 3 (buf buf-chans))
+	(print "*** image-bounding-box-rgb: image was not 3 channels" newline buf newline)
+	(improc-bounding-box-rgb rlow rhigh glow ghigh blow bhigh
+				 (buf buf-dims)
+				 (buf buf-addrs)
+				 (buf buf-steps)))))
+  
+(set image-fuzzy-bounding-box
+  (proc (thresh pixcount buf)
+    (improc-fuzzy-bounding-box thresh
+                               pixcount
+                               (buf buf-dims)
+                               ((buf buf-addrs) 0)
+                               (buf buf-steps))))
+
+
+(set affine-rotate 
+  (proc (theta)
+    [ (cos (degrad theta)) 
+      (* -1.0 (sin (degrad theta)))
+      0.0
+      (sin (degrad theta))
+      (cos (degrad theta))
+      0.0 ]))
+
+(set affine-scale
+  (proc (scale)
+    (if (list? scale)
+        [ (scale 0) 0.0 0.0 0.0 (scale 1) 0.0 ]
+        [ scale 0.0 0.0 0.0 scale 0.0 ])))
+
+(set affine-translate
+  (proc (trans)
+    [ 1.0 0.0 (trans 0) 0.0 1.0 (trans 1) ]))
+
+(set affine-shear
+  (proc (shear)
+    [ 1.0 (shear 0) 0.0 (shear 1) 1.0 0.0]))
+
+(set affine-combine
+  (proc args
+    (local (mb)
+      (begin
+        (set mb [1.0 0.0 0.0 0.0 1.0 0.0])
+        (map (proc (ma)
+               (set mb [ (+ (* (ma 0) (mb 0)) (* (ma 1) (mb 3)))
+                         (+ (* (ma 0) (mb 1)) (* (ma 1) (mb 4)))
+                         (+ (* (ma 0) (mb 2)) (* (ma 1) (mb 5)) (ma 2))
+                         (+ (* (ma 3) (mb 0)) (* (ma 4) (mb 3)))
+                         (+ (* (ma 3) (mb 1)) (* (ma 4) (mb 4)))
+                         (+ (* (ma 3) (mb 2)) (* (ma 4) (mb 5)) (ma 5)) ]))
+             args)
+        mb))))
+
+(set affine-trans-point
+  (proc (params point)
+    [ (+ (* (params 0) (point 0))
+	 (* (params 1) (point 1))
+	 (params 2))
+      (+ (* (params 3) (point 0))
+	 (* (params 4) (point 1))
+	 (params 5)) ] ))
+
+(set image-simple-scale
+  (proc (buf1 buf2)
+    (image-affine-trans 
+     (affine-scale [(/ (real ((buf2 buf-dims) 0)) ((buf1 buf-dims) 0)) 
+                    (/ (real ((buf2 buf-dims) 1)) ((buf1 buf-dims) 1))]) 
+     True buf1 buf2)))
+
+(set image-aspect-scale
+  (proc (buf1 buf2)
+    (local (scalex scaley scale buf2-center scaledims
+                   buf2-start buf2sub)
+      (begin
+        (set scalex (/ (real ((buf2 buf-dims) 0)) ((buf1 buf-dims) 0)))
+        (set scaley (/ (real ((buf2 buf-dims) 1)) ((buf1 buf-dims) 1)))
+        (set scale (if (< scalex scaley) scalex scaley))
+        (set buf2-center (/ (buf2 buf-dims) [2 2]))
+        (set scaledims (map integer (* [scale scale] (buf1 buf-dims))))
+        (set buf2-start (- buf2-center (/ scaledims [2 2])))
+        (set buf2sub (isolate-sub-image buf2-start scaledims buf2))
+        (image-affine-trans (affine-scale scale) True buf1 buf2sub)))))
+
+(set new-scale-remap
+  (proc (scale len)
+    (local (opscale)
+      (begin
+        (set opscale (if (= scale 0.0) 0.0 (/ 1.0 scale)))
+        (pack (map (proc (x) (integer (+ 0.5 (* opscale x)))) 
+                   (make-series 0.0 len 1.0))
+              c-int len)))))
+
+
+#
+#  i m a g e - f l o o d - f i l l         Isolate a single blob via flood 
+#                                          fill seeded by a given point
+#
+#  Inputs :
+#              1) Alpha plane with foreground objects defined by any 
+#                   non-zero values and background defined by zeros.
+#                   Data type is c-short
+#              2) Seed point ... a list with the x,y position of point in
+#                   the alpha plane to begin the flood fill.
+#              3) (Optional) The name of the pre-allocated alpha plane. If
+#                   none is provided, an output file is created. The flooded
+#                   region is marked with a 1, the remainer with a 0.
+#                   Data type is c-byte
+#
+#  Returned :  On successful completion, the output alpha plane is returned 
+#              as an image buffer. Otherwise, a NULL is returned.
+#----------------------------------------------------------------------
+
+(set image-flood-fill
+  (proc arglist
+    (local (inbuf chans size seed-point x y outbuf)
+      (begin
+        (set inbuf (arglist 0))
+        (set chans 1)
+        (set size (inbuf buf-size))
+        (set seed-point (arglist 1))
+        (set x (seed-point 0))
+        (set y (seed-point 1))
+        (if (> (length arglist) 2)
+            (set outbuf (arglist 2))
+            (set outbuf (new-image c-byte chans size)) )
+
+        (cond ((!= (outbuf buf-size) size)
+               (image-buf-error "image-flood-fill" inbuf outbuf))
+              ((and (= (inbuf buf-type) c-byte)
+                    (= (outbuf buf-type) c-byte))
+               (if (improc-flood-fill-byte (inbuf buf-addrs) 
+                                           (outbuf buf-addrs)
+                                           (size 1)
+                                           (size 0)
+                                           y
+                                           x)
+                   outbuf
+                   Null))
+              ((and (= (inbuf buf-type) c-short)
+                    (= (outbuf buf-type) c-byte))
+               (if (improc-flood-fill-short (inbuf buf-addrs) 
+                                            (outbuf buf-addrs)
+                                            (size 1)
+                                            (size 0)
+                                            y
+                                            x)
+                   outbuf
+                   Null))
+              (True
+               (image-type-error "image-flood-fill" inbuf outbuf)) )))))
+
+
+
+
+#
+#  i m a g e - o p t i c a l - f l o w        Compute 2D warp between two images.
+#
+#  Inputs :
+#              1) First image (labeled 'model') ... datatype = byte
+#              2) Second image (labeled 'image') ... datatype = byte
+#              3) pre-allocated 2D plane to contain the vertical displacement
+#              4) pre-allocated 2D plane to contain the horizontal displacement
+#
+#  Returned :  On successful completion, the function writes the horizontal and 
+#              vertical displacements in the pre-allocated buffers and then returns 
+#              a True. Otherwise, it returns a a NULL
+#----------------------------------------------------------------------
+
+(set image-optical-flow
+  (proc (image model vY vX)
+    (local (imagebuf modelbuf chans size vY-buf vX-buf)
+      (begin
+        (set imagebuf (image buf-addrs))
+        (set modelbuf (model buf-addrs))
+        (set chans 1)
+        (set size (image buf-size))
+        (set vY-buf (vY buf-addrs))
+        (set vX-buf (vX buf-addrs))
+        (cond ((and (!= (image buf-type) (model buf-type) c-byte)
+                    (!= (image buf-type) (model buf-type) c-int) )
+               (image-type-error "image-optical-flow" image model))
+              ((!= (vY buf-type) 
+                   (vX buf-type) 
+                   c-float)
+               (image-type-error "image-optical-flow" vY vX))
+              ((!= (model buf-size) 
+                   (vY buf-size) 
+                   (vX buf-size) 
+                   size)
+               (image-buf-error "image-optical-flow" image model vy vX))
+              (True
+               (switch (image buf-type)
+                 (c-byte (improc-optical-flow-byte imagebuf
+                                                   modelbuf
+                                                   (size 1)
+                                                   (size 0)
+                                                   vY-buf
+                                                   vX-buf ))
+                 (c-int  (improc-optical-flow-int imagebuf
+                                                  modelbuf
+                                                  (size 1)
+                                                  (size 0)
+                                                  vY-buf
+                                                  vX-buf ))
+                 (else   (image-type-error "image-transfer" image model)) )))))))
+

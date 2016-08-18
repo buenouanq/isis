@@ -1,0 +1,13 @@
+
+(set vidcap (new-video-capture [vc-format vc-yuv]))
+(set win (win-create [win-size [640 240]]))
+
+(while True
+  (begin
+    (set yuvbuf (vidcap))
+    (win [win-put (yuvbuf 0)] 
+	 [win-put (isolate-channel 0 (yuvbuf 1)) [320 0]] 
+	 [win-put (isolate-channel 1 (yuvbuf 1)) [480 0]]
+	 [win-output])))
+
+

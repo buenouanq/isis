@@ -1,0 +1,40 @@
+############################################################################
+# Macaroni POINTSPRAY
+# Creates a rotating spray of purple points
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Pointspray")
+(set macwin (macaroni-create-window "Pointspray" [300 300] [100 100] True))
+
+############################################################################
+# Build list of points
+
+(set numpoints 200)
+(set angles (map degrad (make-series 0.0 numpoints 101.0)))
+(set radii (make-series 1.0 numpoints 1.0))
+(set points (map (proc (a r) [ (* r (cos a)) (* r (sin a)) ]) angles radii))
+
+############################################################################
+# Create Macaroni points and transform objects
+
+(set pobj (mac-new-points [mac-points points]))
+(set ptrans (mac-new-transform [mac-object pobj]
+                               [mac-position [150.0 150.0]]
+                               [mac-point-size 3.0]
+                               [mac-color [0.7 0.4 0.6 1.0]]))
+
+############################################################################
+# Start rendering, incrementing the rotation each pass
+
+(set rot 0.0)
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (set rot (+ rot 10.0))
+     (ptrans [mac-rotation rot])
+     (macaroni-update-window macwin ptrans True))))

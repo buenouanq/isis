@@ -1,0 +1,14 @@
+
+(print "Please enter your preference: ")
+
+(set selection (read-string))
+
+(set dinner 
+  (switch selection
+    ("carnivore" "barbequed ribs")
+    ("vegetarian" "a spinach omelette")
+    ("vegan" "cucumber salad")
+    (else "freshly cut twigs")))
+
+(print "Your dinner will be " dinner ".  Please be seated." newline)
+

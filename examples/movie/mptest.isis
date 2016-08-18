@@ -1,0 +1,87 @@
+############################################################################
+# Movie player example program
+# Stefan Agamanolis
+
+(load "macaroni.isis")
+
+############################################################################
+# Movie parameters 
+
+(set framesize [320 240])
+(set achans 2)
+(set arate 22050)
+(set abits 16)
+
+############################################################################
+# List of movies 
+# Edit with the filenames of movies on your computer.
+# Works best if they are fairly short.
+
+(set movienames
+  [ "/usr/local/isis/media/repo"
+    "/scsi/movies/movie2"
+    "/scsi/movies/movie3"
+    "/scsi/movies/movie4"
+    "/scsi/movies/movie5"
+    "/scsi/movies/movie6"
+    "/scsi/movies/movie7"
+    "/scsi/movies/movie8"
+    "/scsi/movies/movie9"
+    ])
+
+(set movieobjs (map new-isis-movie movienames))
+
+############################################################################
+# Macaroni setup
+
+(load "macaroni.isis")
+
+(macaroni-initialize "Movie Player")
+
+# Create a large Macaroni window
+(set rootwinsize [1024 768])
+(set rootwin (macaroni-create-window "notitle" rootwinsize [0 0] True))
+
+# Scale factor to make movies fill the screen
+(set scalefactor (/ (real (rootwinsize 0)) (* 0.95 (framesize 0))))
+
+# Create a Macaroni Isis movie object
+(set mobj (mac-new-isis-movie [mac-interp True]))
+
+# Create a Macaroni transform object to position/scale the movie
+(set mtrans (mac-new-transform [mac-object mobj]
+			       [mac-position (/ (map real rootwinsize) [2.0 2.0])]
+			       [mac-scale scalefactor]))
+
+# Create a scene with just the movie
+(set fullscene (mac-new-scene [mac-objects [mtrans]]))
+
+############################################################################
+# Create movie player
+
+(set mplayer (new-movie-player mobj achans arate abits (= abits 8) False))
+
+############################################################################
+# Keyboard interaction
+
+(set keyboard
+  (proc (key x y)
+    (cond 
+     ((= key (integer 'q')) (exit))
+     ((= key (integer ' ')) (mplayer [mp-reset]))
+     ((= key (integer tab)) (mplayer [mp-skip]))
+     ((and (>= key (integer '1')) (<= key (integer '9')))
+      (mplayer [mp-enqueue (movieobjs (integer (- key (integer '1'))))])))))
+
+(update-glut-callback-slot glut_keyboard_slot keyboard)
+(glutKeyboardFunc glut_keyboard)
+
+############################################################################
+# Main loop
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (mplayer [mp-process])
+     (macaroni-update-window rootwin fullscene True)
+     )))

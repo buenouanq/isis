@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# these are for soundblaster input
+amixer set Line 0% unmute capture toggle
+amixer set Capture 50% unmute
+
+# output settings
+amixer set Master 80% unmute
+amixer set PCM 80% unmute
+

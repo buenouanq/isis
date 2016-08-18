@@ -1,0 +1,17 @@
+
+
+(set image (new-standard-image 3 [400 400]))
+(image-fill-constant 255 image)
+
+(image-fill-constant 255 (isolate-channel 0 image))
+(image-fill-constant 0 (isolate-channels 1 2 image))
+
+(set vertpart (isolate-sub-image [150 50] [100 300] image))
+(set horizpart (isolate-sub-image [50 150] [300 100] image))
+
+(image-fill-constant 255 (isolate-channel 1 vertpart))
+(image-fill-constant 255 (isolate-channel 2 horizpart))
+
+(easywin-create image)
+
+(read-string)

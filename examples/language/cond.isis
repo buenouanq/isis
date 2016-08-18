@@ -1,0 +1,12 @@
+
+(print "Please enter your age: " newline)
+
+(set age (eval (read-string)))
+
+(set bev (cond ((< age 2) "warm milk")
+	       ((< age 12) "fruit punch")
+	       ((< age 21) "a milkshake")
+	       ((> age 50) "a glass of lemonade")
+	       (True "a shot of tequilla")))
+
+(print "Your beverage will be " bev ".  Please be seated." newline)

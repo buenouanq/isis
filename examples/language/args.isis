@@ -1,0 +1,13 @@
+# demonstration of command-line arguments
+
+(print "There are " (length command-line-args) "things to add." newline)
+
+(print "The argument strings are: " command-line-args newline)
+
+(set number-args (map eval command-line-args))
+
+(print "The actual numbers are: " number-args newline)
+
+(set sum (apply + number-args))
+
+(print "The sum is: " sum newline)

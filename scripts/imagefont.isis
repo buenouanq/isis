@@ -1,0 +1,433 @@
+###########################################################################
+# imagefont routines  
+# for drawing text from alpha images of characters
+# stefan agamanolis
+
+###########################################################################
+# master directory of fonts
+
+(set imagefont-directory (append isis-root "/fonts/"))
+
+###########################################################################
+# loading fonts
+
+(set imagefont-load
+  (proc (fontname fontheight)
+    (local (filename infofile imagefile widthfile info
+                     boxsize startchar numchars pagesize spacewidth chans bits chars image
+                     infolist widthlist offsetlist poslist sizelist)
+      (begin
+        # open files
+
+        (set filename (append imagefont-directory fontname "." (uneval fontheight) ".ifont"))
+        (set infofile (open-input (append filename "/info")))
+
+        (if (not infofile)
+            (print "Unable to open font file: " filename newline)
+            (begin
+              (set imagefile (open-input (append filename "/images")))
+              (set widthfile (open-input (append filename "/widths")))
+
+              # read info
+
+              (set info (new-structure))
+              (read-structure infofile info)
+
+              (set boxsize (info "boxsize"))
+              (set startchar (info "startchar"))
+              (set numchars (info "numchars"))
+              (set fontname (info "fontname"))
+              (set fontheight (info "fontheight"))
+              (set pagesize (info "pagesize"))
+              (set spacewidth (info "spacewidth"))
+
+              (set chans (info "chans"))
+              (set bits (info "bits"))
+
+              (set chars (make-series (character startchar) numchars 1))
+	      
+              # load image
+	      
+	      (set image (new-standard-image 1 pagesize))
+	      (read-image imagefile image)
+	      
+              # load character info
+	      
+              (set infolist
+                (map (proc (c) (eval (read-string widthfile)))
+                     chars))
+	      
+	      (set widthlist (map (proc (x) (x 0)) infolist))
+	      (set offsetlist (map (proc (x) (x 1)) infolist))
+	      (set poslist (map (proc (x) (x 2)) infolist))
+	      (set sizelist (map (proc (x) (x 3)) infolist))
+	      
+              # close files
+
+              (close infofile)
+              (close imagefile)
+              (close widthfile)
+
+              # return font info list
+
+              #   0        1          2         3         4        5     
+              [ fontname fontheight spacewidth startchar numchars image
+		# 6         7          8       9       10
+		widthlist offsetlist poslist sizelist pagesize ]))))))
+
+(set imagefont-load-info
+  (proc (fontname fontheight)
+    (local (filename infofile imagefile widthfile info
+                     boxsize startchar numchars pagesize spacewidth chans bits chars image
+                     infolist widthlist offsetlist poslist sizelist)
+      (begin
+        # open files
+
+        (set filename (append imagefont-directory fontname "." (uneval fontheight) ".ifont"))
+        (set infofile (open-input (append filename "/info")))
+
+        (if (not infofile)
+            (print "Unable to open font file: " filename newline)
+            (begin
+              (set imagefile (open-input (append filename "/images")))
+              (set widthfile (open-input (append filename "/widths")))
+
+              # read info
+
+              (set info (new-structure))
+              (read-structure infofile info)
+
+              (set boxsize (info "boxsize"))
+              (set startchar (info "startchar"))
+              (set numchars (info "numchars"))
+              (set fontname (info "fontname"))
+              (set fontheight (info "fontheight"))
+              (set pagesize (info "pagesize"))
+              (set spacewidth (info "spacewidth"))
+
+              (set chans (info "chans"))
+              (set bits (info "bits"))
+
+              (set chars (make-series (character startchar) numchars 1))
+	      
+              # load character info
+	      
+              (set infolist
+                (map (proc (c) (eval (read-string widthfile)))
+                     chars))
+	      
+	      (set widthlist (map (proc (x) (x 0)) infolist))
+	      (set offsetlist (map (proc (x) (x 1)) infolist))
+	      (set poslist (map (proc (x) (x 2)) infolist))
+	      (set sizelist (map (proc (x) (x 3)) infolist))
+	      
+              # close files
+
+              (close infofile)
+              (close imagefile)
+              (close widthfile)
+
+              # return font info list
+
+              #   0        1          2         3         4        5     
+              [ fontname fontheight spacewidth startchar numchars Null
+		# 6         7          8       9        10
+		widthlist offsetlist poslist sizelist pagesize ]))))))
+
+###########################################################################
+# finding size of drawn text
+
+(set imagefont-measure
+  (proc (text font fixed hsc vsc)
+    (local (widthlist startchar fontheight spacewidth maxwidth thiswidth numlines charwidth)
+      (begin
+        (set widthlist (font 6))
+        (set startchar (integer (font 3)))
+        (set fontheight (font 1))
+        (set spacewidth (font 2))
+        (set text (map integer text))
+        (set maxwidth 0.0)
+        (set thiswidth 0.0)
+        (set numlines 1)
+        (map (proc (c)
+               (cond
+		((= c 10) 
+		 (begin
+		   (set numlines (+ numlines 1))
+		   (if (> thiswidth maxwidth) (set maxwidth thiswidth))
+		   (set thiswidth 0.0)))
+		((< c startchar) Null)
+		(True 
+		 (begin 
+		   (set charwidth (if fixed spacewidth (widthlist (- c startchar))))
+		   (set thiswidth (+ thiswidth (* hsc charwidth)))))))
+             text)
+        (if (> thiswidth maxwidth) (set maxwidth thiswidth))
+        (map integer [ (+ (* 0.333 fontheight) maxwidth)
+                       (+ (* 0.25 fontheight) (* vsc fontheight numlines)) ])))))
+
+###########################################################################
+# filling text to a certain width (inserts newlines)
+
+(set imagefont-fill
+  (proc (maxwidth text font fixed hsc vsc)
+    (local (len cs ls lastcs cp cp2 linewidth)
+      (begin
+	(set len (length text))
+	(set lastcs (set ls (set cs 0)))
+	(while (< cs len)
+	  (begin
+	    # skip spaces or newlines
+	    (while (and (< cs len) 
+			(or (= (text cs) ' ') 
+			    (= (text cs) newline)))
+	      (begin
+		(if (= (text cs) newline) 
+		    (begin (set ls (+ cs 1))
+			   (set lastcs 0)))
+		(set cs (+ cs 1))))
+	    
+	    # move forward a word
+	    (while (and (< cs len) 
+			(!= (text cs) ' ') 
+			(!= (text cs) newline))
+	      (set cs (+ cs 1)))
+	    
+	    # measure length of line up to this word
+	    (set linewidth ((imagefont-measure (sublist ls (- cs 1) text) 
+					       font fixed hsc vsc) 0))
+	    
+	    #(print "Measuring: " ls (- cs 1) squote (sublist ls (- cs 1) text) 
+	    #   squote " " linewidth newline)
+
+	    # if went over maxwidth, insert a newline
+	    (if (> linewidth maxwidth) 
+		(begin
+		  (set cp2 (set cp (if (!= lastcs 0) lastcs cs)))
+		  (while (and (< cp2 len) (= (text cp2) ' ')) (set cp2 (+ cp 1)))
+		  (begin
+		    (if (< cp len) 
+			(begin 
+			  # (print "Inserting newline at " cp newline)
+			  (set text (append (sublist 0 (- cp 1) text)
+					    "\n" (allbutfirst cp2 text)))
+			  (set len (length text))))
+		    (set cs (set ls cp2))
+		    (set lastcs 0)))
+		(set lastcs cs))
+			
+	    ))
+	
+	text))))
+
+###########################################################################
+# drawing text
+
+(set imagefont-draw
+  (proc (text font fixed hsc vsc startpos outbuf)
+    (local (fontheight startchar image widthlist offsetlist poslist sizelist 
+		       spacewidth pos index image1 image2)
+      (begin
+        (set fontheight (font 1))
+        (set startchar (integer (font 3)))
+        (set image (font 5))
+        (set widthlist (font 6))
+        (set offsetlist (font 7))
+        (set poslist (font 8))
+        (set sizelist (font 9))
+        (set spacewidth (font 7))
+        (set pos (map real startpos))
+        (set text (map integer text))
+        (map (proc (c)
+	       (cond 
+		((= c 10) (set pos [ (real (startpos 0)) (+ (pos 1) (* vsc fontheight)) ]))
+		((< c startchar) Null)
+		(True 
+		 (begin 
+		   (set index (- c startchar))
+		   (set image1 (isolate-sub-image (poslist index) (sizelist index) image))
+		   (set image2 (isolate-sub-image (+ (map integer pos) (offsetlist index))
+						  (sizelist index) outbuf))
+		   (image-transfer-range 1 255 image1 image2)
+		   (set pos (+ pos [ (* hsc (if fixed spacewidth (widthlist index))) 0.0 ]))))))
+             text)))))
+
+###########################################################################
+# viewing the characters in a font
+
+(set imagefont-view 
+  (proc (fontname fontheight)
+    (local (font image size title)
+      (if (set font (imagefont-load fontname fontheight))
+	  (begin
+	    (set image (font 5))
+	    (set size (image buf-dims))
+	    (set title (append fontname " : " (uneval fontheight)))
+	    (easywin-create image title))))))
+
+###########################################################################
+# generating fonts using postscript engine
+# for OpenGL textures, boxsizes must be powers of 2
+# a good default for quality is 5
+# usually startchar is 32 and endchar is 127 or 255
+
+(set imagefont-generate
+  (proc (ps-handle fontname fontheight boxsize pagewidth quality startchar endchar rwidths wheight)
+    (local (outdir numchars chars rawsize subpos subsize inpos insize spacewidth
+		   infofile imagefile widthfile imagelist alphaimage boximage boxsub
+		   bboxlist startlist widthlist hspace curcol curline poslist numlines
+		   pagesize finalimage widthscale infolist info win lineheight pageheight)
+      (begin
+        (set outdir (append imagefont-directory fontname "." (uneval fontheight) ".ifont"))
+        (if (= quality Null) (set quality 5))
+        (if (= startchar Null) (set startchar 32))
+        (if (= endchar Null) (set endchar 127))
+
+        (set numchars (- endchar startchar -1))
+        (set chars (make-series (character startchar) numchars 1))
+	
+	# calculate positioning of character within box
+
+	(set rawsize ((ps-best-text ps-handle "   " fontheight fontname quality False) buf-dims))
+
+        (if (> (rawsize 1) (boxsize 1))
+            (begin (set subpos [0 0])
+		   (set subsize boxsize)
+                   (set inpos [0 (/ (- (rawsize 1) (boxsize 1)) 2)])
+                   (set insize boxsize))
+            (begin (set subpos [0 0])
+		   (set subsize [(boxsize 0) (rawsize 1)])
+                   (set inpos [0 0])
+                   (set insize [(boxsize 0) (rawsize 1)])))
+
+        # create files
+
+        (system (append "rm -r " outdir))
+        (print "Writing font to " outdir "..." newline)
+
+        (if (create-directory outdir)
+            (begin
+
+              (set infofile (open-output (append outdir "/info")))
+              (set imagefile (open-output (append outdir "/images")))
+              (set widthfile (open-output (append outdir "/widths")))
+
+              # generate images for each character
+
+              (set imagelist 
+                (map (proc (c)
+                       (begin
+                         (print c)
+                         (set alphaimage (ps-best-text ps-handle (append [c] "      ")
+                                                       fontheight fontname quality False))
+			 (set boximage (image-fill-constant 0 (new-standard-image 1 boxsize)))
+			 (set boxsub (isolate-sub-image subpos subsize boximage))
+			 (image-transfer (isolate-sub-image inpos insize alphaimage) boxsub)
+			 boximage))
+                     chars))
+
+	      # find bounding box of character inside
+
+              (set bboxlist
+                (map (proc (image) (image-bounding-box 1 255 image))
+		     imagelist))
+	      
+	      # find horizontal start and width of each character
+
+	      (set startlist (map (proc (bbox) (if bbox (bbox 0) 0)) bboxlist))
+	      (set widthlist (map (proc (bbox) (if bbox (- (bbox 2) (bbox 0) -1) 0)) bboxlist))
+	      
+	      # calculate position of each character in the final page
+
+	      (set lineheight (+ fontheight 4))
+	      (set hspace 4)
+	      (set curcol 0)
+	      (set curline 0)
+	      (set poslist
+		(map (proc (w) 
+		       (begin
+			 (set curcol (+ curcol w hspace))
+			 (if (> curcol pagewidth) 
+			     (begin
+			       (set curline (+ curline 1))
+			       (set curcol (+ w hspace))))
+			 [ (- curcol w (/ hspace 2)) (* curline lineheight) ] ))
+		     widthlist))
+	      (set numlines (+ curline 1))
+
+              # make final image
+	      
+	      (set pageheight 1)
+	      (while (< pageheight (* numlines lineheight))
+		(set pageheight (<< pageheight 1)))
+	      (set pagesize [ pagewidth pageheight ])
+	      (set finalimage (image-fill-constant 0 (new-standard-image 1 pagesize)))
+	      (map (proc (image pos start width)
+		     (image-transfer (isolate-sub-image [start 0] [width lineheight] image)
+				     (isolate-sub-image pos [width lineheight] finalimage)))
+		   imagelist poslist startlist widthlist)
+
+	      (write-image imagefile finalimage)
+	      
+              # calculate actual character width info given
+
+              (if rwidths
+                  (begin
+                    (set widthscale (/ (real fontheight) wheight))
+                    (set rwidths (map (proc (w) (* widthscale w)) rwidths)))
+                  (begin
+                    (set rwidths (map (proc (w) (real (+ 2 w))) widthlist))
+                    (set widthscale 1.0)))
+
+	      (set spacewidth (* 0.7 (rwidths (integer (- '5' startchar)))))
+	      (set rwidths (map (proc (rw) (if (= rw 0.0) spacewidth rw)) rwidths))
+	      
+	      # determine character info to write to file
+
+	      (set infolist 
+		(map (proc (rw s p w)
+		       [ rw [s 0] p [ w lineheight ] ])
+		     rwidths startlist poslist widthlist))
+
+              (map (proc (i c) (write-string widthfile i "# " c newline))
+		   infolist chars)
+
+              (map (proc (i c) (print c ": " i newline))
+		   infolist chars)
+
+              # write info
+
+              (set info (new-structure))
+              (info "imagefile" "images")
+              (info "widthfile" "widths")
+              (info "fontname" fontname)
+              (info "fontheight" fontheight)
+              (info "boxsize" boxsize)
+              (info "startchar" startchar)
+              (info "numchars" numchars)
+	      (info "pagesize" pagesize)
+	      (info "spacewidth" spacewidth)
+              (info "chans" 1)
+              (info "bits" 8)
+              (write-structure infofile info)
+	      
+              # clean up
+	      
+              (print "Done!" newline)
+	      
+              (close imagefile)
+              (close widthfile)
+              (close infofile)
+	      
+	      # show an image of the page
+	      
+#	      (set win (easywin-create finalimage outdir [100 100]))
+#	      (print "Press return to continue... ")
+#	      (read-string)
+#	      (easywin-close win)
+	      
+	      (free-image finalimage)
+	      (map free-image imagelist)))
+
+        ))))
+

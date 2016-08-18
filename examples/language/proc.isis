@@ -1,0 +1,14 @@
+
+(set add3 
+  (proc (fred) 
+    (+ fred 3)))
+
+(set dup 
+  (proc arglist 
+    (append arglist arglist)))
+
+(set factorial 
+  (proc (x) 
+    (if (= 0 x) 
+	1 
+	(* x (factorial (- x 1))))))

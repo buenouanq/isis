@@ -1,0 +1,7 @@
+
+(set vidcap (new-video-capture))
+(set win (easywin-create (vidcap)))
+(print "Press return to exit...")
+(read-string)
+(vidcap vc-close)
+

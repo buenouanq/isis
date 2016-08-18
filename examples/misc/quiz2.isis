@@ -1,0 +1,17 @@
+
+# What's wrong with the following code?  (2 problems)
+
+(set database [])          # the global database
+
+(set add-to-database       # adds a key and value to the database
+  (proc (key val)
+    (tail-insert [key val] database)))
+
+(set find-in-database      # returns the value of a specified key, or Null.
+  (proc (key)
+    (local (result)
+      (map (proc (entry) 
+             (if (= key (entry 0)) 
+                 (set result (entry 1))))
+           database))))
+

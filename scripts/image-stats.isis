@@ -1,0 +1,239 @@
+#  image statistics utilities
+#
+#  J. Watlington, 12/11/96
+#
+#  These are isis functions that serve as a convenient interface between
+#  Isis data structures and C.
+#
+#  fixed up by stefan, 3/23/98
+
+###########################################################################
+# Stats functions
+
+(set image-stats-mean
+  (proc (inbuf)
+    (local (func)
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-mean-byte) 
+                    (c-short image-stats-raw-mean-short) 
+                    (c-ushort image-stats-raw-mean-ushort) 
+                    (c-int image-stats-raw-mean-long) 
+                    (c-uint image-stats-raw-mean-ulong) 
+                    (c-float image-stats-raw-mean-float) 
+                    (c-double image-stats-raw-mean-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-mean" inbuf))))))
+
+(set image-stats-max
+  (proc (inbuf)
+    (local (func)
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-max-byte) 
+                    (c-short image-stats-raw-max-short) 
+                    (c-ushort image-stats-raw-max-ushort) 
+                    (c-int image-stats-raw-max-long) 
+                    (c-uint image-stats-raw-max-ulong) 
+                    (c-float image-stats-raw-max-float) 
+                    (c-double image-stats-raw-max-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-max" inbuf))))))
+
+(set image-stats-min
+  (proc (inbuf)
+    (local (func) 
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-min-byte) 
+                    (c-short image-stats-raw-min-short) 
+                    (c-ushort image-stats-raw-min-ushort) 
+                    (c-int image-stats-raw-min-long) 
+                    (c-uint image-stats-raw-min-ulong) 
+                    (c-float image-stats-raw-min-float) 
+                    (c-double image-stats-raw-min-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-min" inbuf))))))
+
+(set image-stats-energy
+  (proc (inbuf)
+    (local (func)
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-energy-byte) 
+                    (c-short image-stats-raw-energy-short) 
+                    (c-ushort image-stats-raw-energy-ushort) 
+                    (c-int image-stats-raw-energy-long) 
+                    (c-uint image-stats-raw-energy-ulong) 
+                    (c-float image-stats-raw-energy-float) 
+                    (c-double image-stats-raw-energy-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-energy" inbuf))))))
+
+(set image-stats-variance
+  (proc (inbuf)
+    (local (func)
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-variance-byte) 
+                    (c-short image-stats-raw-variance-short) 
+                    (c-ushort image-stats-raw-variance-ushort) 
+                    (c-int image-stats-raw-variance-long) 
+                    (c-uint image-stats-raw-variance-ulong) 
+                    (c-float image-stats-raw-variance-float) 
+                    (c-double image-stats-raw-variance-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-variance" inbuf))))))
+
+(set image-stats-sum
+  (proc (inbuf)
+    (local (func)
+      (begin
+        (set func (switch (inbuf buf-type)
+                    (c-byte image-stats-raw-sum-byte) 
+                    (c-short image-stats-raw-sum-short) 
+                    (c-ushort image-stats-raw-sum-ushort) 
+                    (c-int image-stats-raw-sum-long) 
+                    (c-uint image-stats-raw-sum-ulong) 
+                    (c-float image-stats-raw-sum-float) 
+                    (c-double image-stats-raw-sum-double)))
+        (if func 
+            (map (proc (bufadr)
+                   (func bufadr
+                         ((inbuf buf-dims) 0)
+                         ((inbuf buf-dims) 1)
+                         ((inbuf buf-steps) 0)
+                         ((inbuf buf-steps) 1)))
+                 (inbuf buf-addrs))
+            (image-type-error "image-stats-sum" inbuf))))))
+
+###########################################################################
+# Histogramming functions
+
+(set image-stats-2D-hist
+  (proc (buf1 a-bins a-min a-max buf2 b-bins b-min b-max hist-scale hist)
+    (if (or (!= (buf1 buf-dims) (buf2 buf-dims))
+            (!= (buf1 buf-steps) (buf2 buf-steps)))
+        (image-buf-error "image-stats-2D-hist" buf1 buf2)
+        (local (func)
+          (begin
+            (set func (switch (buf1 buf-type)
+                        (c-byte image-stats-raw-2D-hist-byte) 
+                        (c-short image-stats-raw-2D-hist-short) 
+                        (c-ushort image-stats-raw-2D-hist-ushort) 
+                        (c-int image-stats-raw-2D-hist-long) 
+                        (c-uint image-stats-raw-2D-hist-ulong) 
+                        (c-float image-stats-raw-2D-hist-float) 
+                        (c-double image-stats-raw-2D-hist-double)))
+            (if func 
+                (func ((buf1 buf-addrs) 0)
+                      ((buf2 buf-addrs) 0)
+                      ((buf1 buf-dims) 0)
+                      ((buf1 buf-dims) 1)
+                      ((buf1 buf-steps) 0)
+                      ((buf1 buf-steps) 1)
+                      ((hist buf-addrs) 0)
+                      a-bins a-min a-max
+                      b-bins b-min b-max hist-scale)
+                (image-type-error "image-stats-2D-hist" buf1 buf2))
+            hist)))))
+
+(set image-stats-1D-hist-integer
+  (proc (buf1 a-bins a-min a-max)
+    (local (func)
+      (begin
+        (set func (switch (buf1 buf-type)
+                    (c-byte image-stats-raw-1D-hist-byte-int)))
+        (if func 
+            (func ((buf1 buf-addrs) 0)
+                  ((buf1 buf-dims) 0)
+                  ((buf1 buf-dims) 1)
+                  ((buf1 buf-steps) 0)
+                  ((buf1 buf-steps) 1)
+                  a-bins a-min a-max)
+            (image-type-error "image-stats-1D-hist-integer" buf1))))))
+
+(set image-stats-1D-hist-real
+  (proc (buf1 a-bins a-min a-max)
+    (local (func)
+      (begin
+        (set func (switch (buf1 buf-type)
+                    (c-byte image-stats-raw-1D-hist-byte-real)))
+        (if func 
+            (func ((buf1 buf-addrs) 0)
+                  ((buf1 buf-dims) 0)
+                  ((buf1 buf-dims) 1)
+                  ((buf1 buf-steps) 0)
+                  ((buf1 buf-steps) 1)
+                  a-bins a-min a-max)
+            (image-type-error "image-stats-1D-hist-real" buf1))))))
+
+(set image-stats-fast-hist
+  (proc (buf)
+    (local (func)
+      (begin
+        (set func (switch (buf buf-type)
+                    (c-byte image-stats-raw-fast-1D-hist-byte)))
+        (if func 
+            (func (buf buf-size)
+                  (buf buf-addrs)
+                  (buf buf-steps))
+            (image-type-error "image-stats-fast-hist" buf))))))
+
+###########################################################################
+# Miscellaneous
+
+(set image-stats-centroid
+  (proc (low high buf)
+    (local (func)
+      (begin
+        (set func (switch (buf buf-type)
+                    (c-byte image-stats-raw-centroid)))
+        (if func 
+            (func low high
+                  (buf buf-size)
+                  (buf buf-addrs)
+                  (buf buf-steps))
+            (image-type-error "image-stats-centroid" buf))))))
+
+
+
+
+
+
+

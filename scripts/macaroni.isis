@@ -1,0 +1,675 @@
+############################################################################
+# GL Macaroni
+# stefan agamanolis
+
+(load "opengl-utilities.isis")
+
+(set macaroni-initialize
+  (proc (name)
+    (begin
+      (print "Macaroni is initializing..." newline)
+      (glut-init name))))
+
+(set macaroni-create-window 
+  (proc args
+    (local (win)
+      (begin
+        (set win (apply glut-create-window args))
+        (glutReshapeFunc glut_reshape)
+        (glutDisplayFunc glut_display)
+        (update-glut-callback-slot glut_reshape_slot macaroni-reshape)
+        (update-glut-callback-slot glut_display_slot macaroni-display)
+        (glClearColor 0.0 0.0 0.0 0.0)
+        (glEnable GL_BLEND)
+        (glBlendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA)
+        (glTexEnvi GL_TEXTURE_ENV GL_TEXTURE_ENV_MODE GL_MODULATE)
+        win))))
+
+(set macaroni-create-sub-window 
+  (proc args
+    (local (win)
+      (begin
+        (set win (apply glut-create-sub-window args))
+        (glutReshapeFunc glut_reshape)
+        (glutDisplayFunc glut_display)
+        (update-glut-callback-slot glut_reshape_slot macaroni-reshape)
+        (update-glut-callback-slot glut_display_slot macaroni-display)
+        (glClearColor 0.0 0.0 0.0 0.0)
+        (glEnable GL_BLEND)
+        (glBlendFunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA)
+        (glTexEnvi GL_TEXTURE_ENV GL_TEXTURE_ENV_MODE GL_MODULATE)
+        win))))
+
+(set macaroni-reshape
+  (proc (w h)
+    (begin
+      (glViewport 0 0 w h)
+      (glMatrixMode GL_PROJECTION)
+      (glLoadIdentity)
+      (glOrtho 0.0 (real w) 0.0 (real h) -1.0 1.0)
+      (glMatrixMode GL_MODELVIEW))))
+
+(set macaroni-start
+  (proc (idlefunc)
+    (begin
+      (if idlefunc
+          (begin
+            (glutIdleFunc glut_idle)
+            (update-glut-callback-slot glut_idle_slot idlefunc)))
+      (glutMainLoop))))
+
+(set macaroni-current-scene Null)
+(set macaroni-clearmode True)
+
+(set macaroni-clear 
+  (proc ()
+    (glClear GL_COLOR_BUFFER_BIT)))
+
+(set macaroni-begin-render
+  (proc ()
+    (begin
+      (glLoadIdentity)
+      (glColor4f 1.0 1.0 1.0 1.0)
+      (glLineWidth 1.0)
+      (glDisable GL_LINE_STIPPLE)
+      (glPointSize 1.0))))
+
+(set macaroni-end-render
+  (proc ()
+    (begin
+      (glutSwapBuffers)
+      (glFlush))))
+
+(set macaroni-display
+  (proc ()
+    (macaroni-render-scene macaroni-current-scene macaroni-clearmode)))
+
+(set macaroni-render-scene
+  (proc (scene clearmode)
+    (begin
+      (if clearmode (macaroni-clear))
+      (macaroni-begin-render)
+      (scene [mac-render])
+      (macaroni-end-render))))
+
+(set macaroni-update-window
+  (proc (win scene clearmode)
+    (begin
+      (glutSetWindow win)
+      (set macaroni-current-scene scene)
+      (set macaroni-clearmode clearmode)
+      (glutPostRedisplay))))
+
+(set macaroni-redisplay-window
+  (proc (win)
+    (begin
+      (glutSetWindow win)
+      (glutPostRedisplay))))
+
+(set macaroni-create-framerate-tracker
+  (proc (interval)
+    (local (timer framecount)
+      (begin
+        (set timer (new-timer))
+        (set framecount 0)
+        (proc args 
+          (if (= 0 (mod (set framecount (+ framecount 1)) interval))
+              (begin (print-frames-per-second timer framecount)
+                     (set framecount 0)
+                     (timer 'r'))))))))
+
+############################################################################
+# Macaroni objects
+
+(set mac-render 1200)
+(set mac-destroy 1201)
+(set mac-objects 1202)
+(set mac-object 1203)
+(set mac-scale 1204)
+(set mac-rotation 1205)
+(set mac-position 1206)
+(set mac-color 1208)
+(set mac-size 1209)
+(set mac-sides 1210)
+(set mac-texture 1211)
+(set mac-texposition 1212)
+(set mac-texsize 1213)
+(set mac-textures 1214)
+(set mac-frame 1215)
+(set mac-url 1216)
+(set mac-filename 1217)
+(set mac-image 1218)
+(set mac-images 1219)
+(set mac-subimage 1220)
+(set mac-framecount 1221)
+(set mac-font 1222)
+(set mac-text 1223)
+(set mac-fixed 1224)
+(set mac-halign 1225)
+(set mac-valign 1226)
+(set mac-char-spacing 1227)
+(set mac-line-spacing 1228)
+(set mac-lines 1229)
+(set mac-line-width 1230)
+(set mac-line-factor 1231)
+(set mac-line-pattern 1232)
+(set mac-points 1233)
+(set mac-point-size 1234)
+(set mac-movie 1235)
+(set mac-format 1236)
+(set mac-interp 1237)
+(set mac-framesize 1238)
+(set mac-mute 1239)
+
+(set mac-left 1250)
+(set mac-center 1251)
+(set mac-right 1252)
+(set mac-top 1253)
+(set mac-bottom 1254)
+
+(set mac-command-error
+  (proc (objtype arg)
+    (print "Invalid command on " objtype ": " arg newline)))
+
+(set mac-query-error
+  (proc (objtype arg)
+    (print "Invalid query on " objtype ": " arg newline)))
+
+(set mac-new-scene
+  (proc args
+    (local (objects handler)
+      (begin
+        (set objects [])
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (map (proc (act) (act [mac-render])) objects))
+                  (mac-objects (set objects (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "scene" arg)))
+                (switch arg
+                  (mac-objects objects)
+                  (else (mac-query-error "scene" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-transform
+  (proc args
+    (local (object scale rotation position color linewidth
+                   linefactor linepattern pointsize handler)
+      (begin
+        (set scale 1.0)
+        (set rotation 0.0)
+        (set position [0.0 0.0])
+        (set linepattern (integer 0x0))
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render 
+                   (begin
+                     (glPushMatrix)
+                     (glPushAttrib (| GL_CURRENT_BIT GL_LINE_BIT GL_POINT_BIT))
+                     (glTranslatef (position 0) (position 1) 0.0)
+                     (glRotatef rotation 0.0 0.0 1.0)
+                     (if (list? scale) 
+                         (glScalef (scale 0) (scale 1) 1.0)
+                         (glScalef scale scale 1.0))
+                     (if color (glColor4f (color 0) (color 1) (color 2) (color 3)))
+                     (if (!= Null linewidth) (glLineWidth linewidth))
+                     (if linefactor 
+                         (begin (glEnable GL_LINE_STIPPLE)
+                                (glLineStipple linefactor linepattern)))
+                     (if (!= Null pointsize) (glPointSize pointsize))
+                     (object [mac-render])
+                     (glPopAttrib)
+                     (glPopMatrix)
+		     ))
+                  (mac-object (set object (arg 1)))
+                  (mac-scale (set scale (arg 1)))
+                  (mac-rotation (set rotation (arg 1)))
+                  (mac-position (set position (arg 1)))
+                  (mac-color (set color (arg 1)))
+                  (mac-line-width (set linewidth (arg 1)))
+                  (mac-line-factor (set linefactor (arg 1)))
+                  (mac-line-pattern (set linepattern (arg 1)))
+                  (mac-point-size (set pointsize (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "transform" arg)))
+                (switch arg
+                  (mac-object object)
+                  (mac-scale scale)
+                  (mac-rotation rotation)
+                  (mac-position position)
+                  (mac-color color)
+                  (mac-line-width linewidth)
+                  (mac-line-factor linefactor)
+                  (mac-line-pattern linepattern)
+                  (mac-point-size pointsize)
+                  (else (mac-query-error "transform" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-rectangle
+  (proc args
+    (local (position size handler)
+      (begin
+        (set position [0.0 0.0])
+        (set size [100.0 100.0])
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (gl-draw-rectangle position size))
+                  (mac-position (set position (arg 1)))
+                  (mac-size (set size (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "rectangle" arg)))
+                (switch arg	
+                  (mac-position position)
+                  (mac-size size)
+                  (else (mac-query-error "rectangle" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-regular-polygon
+  (proc args
+    (local (position size sides handler)
+      (begin
+        (set position [0.0 0.0])
+        (set size [50.0 50.0])
+        (set sides 8)
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (gl-draw-regular-polygon position size sides))
+                  (mac-position (set position (arg 1)))
+                  (mac-size (set size (arg 1)))
+                  (mac-sides (set sides (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "regular-polygon" arg)))
+                (switch arg	
+                  (mac-position position)
+                  (mac-size size)
+                  (mac-sides sides)
+                  (else (mac-query-error "regular-polygon" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-texture-rectangle
+  (proc args
+    (local (texture position size texposition texsize
+                    handler)
+      (begin
+        (set position [0.0 0.0])
+        (set size [100.0 100.0])
+        (set texposition [0.0 0.0])
+        (set texsize [100.0 100.0])
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (gl-draw-textured-rectangle position size texture texposition texsize))
+                  (mac-texture (set texture (arg 1)))
+                  (mac-position (set position (arg 1)))
+                  (mac-size (set size (arg 1)))
+                  (mac-texposition (set texposition (arg 1)))
+                  (mac-texsize (set texsize (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "texture-rectangle" arg)))
+                (switch arg	
+                  (mac-texture texture)
+                  (mac-position position)
+                  (mac-size size)
+                  (mac-texposition texposition)
+                  (mac-texsize texsize)	  
+                  (else (mac-query-error "texture-rectangle" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-image
+  (proc args
+    (local (object url images textures frame framecount format size destroy
+                   build handler)
+      (begin
+        (set object (mac-new-texture-rectangle))
+	(set format GL_RGBA)
+        (set destroy 
+          (proc () 
+            (begin
+              (if textures (map gl-delete-texture textures))
+              (set textures Null)
+              (set frame 0))))
+        (set build
+          (proc ()
+            (begin
+              (destroy)
+              (set textures (map (proc (x) (gl-create-texture)) images))
+              (map (proc (t i) (gl-generate-texture-image t (vertical-mirror-image i) 
+							  [1.0 1.0] format))
+                   textures images)
+              (set frame 0)
+              (set framecount (length textures))
+              (set size (map real ((images 0) buf-dims)))
+              (object [mac-texture (textures 0)]
+                      [mac-size size]
+                      [mac-position (/ size [-2.0 -2.0])]
+                      [mac-texsize size]
+                      [mac-texposition (/ size [-2.0 -2.0])]))))	    
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (object [mac-render]))
+                  (mac-frame (object [mac-texture (textures (set frame (arg 1)))]))
+                  (mac-url 
+                   (begin
+                     (set url (arg 1))
+                     (set images (retrieve-url-image-sequence url))
+                     (if images
+                         (begin
+                           (build)
+                           (map free-image images))
+                         (print "Could not retrieve: " url newline))))
+                  (mac-filename 
+                   (begin
+                     (set url (append "file:" (arg 1)))
+                     (set images (retrieve-url-image-sequence url))
+                     (if images
+                         (begin
+                           (build)
+                           (map free-image images))
+                         (print "Could not retrieve: " url newline))))
+                  (mac-image
+                   (begin 
+                     (set url Null)
+                     (set images [ (arg 1) ])
+                     (build)))
+                  (mac-images
+                   (begin
+                     (set url Null)
+                     (set images (arg 1))
+                     (build)))
+		  (mac-format (set format (arg 1)))
+		  (mac-interp 
+		   (map (proc (t) (gl-set-texture-parameters t True (arg 1))) 
+			textures))
+                  (mac-destroy (destroy))
+                  (else (object arg)))
+                (switch arg
+                  (mac-url url)
+                  (mac-textures textures)
+                  (mac-frame frame)
+                  (mac-framecount framecount)
+                  (mac-size size)
+		  (mac-format format)
+                  (else (object arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-dynamic-image
+  (proc args
+    (local (object texture handler format)
+      (begin
+        (set texture (gl-create-texture))
+        (set object (mac-new-texture-rectangle [mac-texture texture]))
+	(set format GL_RGBA)
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (object [mac-render]))
+                  (mac-image (gl-set-texture-image texture (arg 1) format))
+                  (mac-subimage (gl-update-texture-image texture (arg 1) (arg 2)))
+		  (mac-format (set format (arg 1)))
+                  (mac-destroy (gl-delete-texture texture))
+		  (mac-interp (gl-set-texture-parameters texture True (arg 1)))
+                  (else (object arg)))
+                (switch arg	
+		  (mac-format format)
+                  (else (object arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-raster-image
+  (proc args
+    (local (image position scale handler)
+      (begin
+        (set position [0.0 0.0])
+        (set scale [1.0 1.0])
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render 
+                   (begin (glRasterPos2f (position 0) (position 1))
+                          (glPixelZoom (scale 0) (scale 1))
+                          (glPixelStorei GL_UNPACK_ALIGNMENT 4)
+                          (glDrawPixels ((image buf-dims) 0) ((image buf-dims) 1)
+                                        GL_RGBA GL_UNSIGNED_BYTE ((image buf-addrs) 0))))
+                  (mac-image (set image (arg 1)))
+                  (mac-position (set position (arg 1)))
+                  (mac-scale (set scale (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "raster-image" arg)))
+                (switch arg
+                  (mac-image image)
+                  (mac-position position)
+                  (mac-scale scale)
+                  (else (mac-query-error "raster-image" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-text
+  (proc args
+    (local (font text fixed halign valign cspace lspace size
+                 startpos handler)
+      (begin
+        (set fixed False)
+        (set halign mac-center)
+        (set valign mac-center)
+        (set cspace 1.0)
+        (set lspace 1.0)
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render 
+                   (begin
+                     (set size (gl-measure-text text font fixed cspace lspace))
+                     (set startpos [ (switch halign 
+                                       (mac-left 0.0)
+                                       (mac-right (* (size 0) -1.0))
+                                       (else (* (size 0) -0.5)))
+                                     (- (switch valign 
+                                          (mac-top 0.0)
+                                          (mac-bottom (* (size 1) 1.0))
+                                          (else (* (size 1) 0.5)))
+                                        (real (font 1))) ])
+                     (gl-draw-text text font fixed cspace lspace startpos)))
+                  (mac-text (set text (arg 1)))
+                  (mac-font (set font (arg 1)))
+                  (mac-fixed (set fixed (arg 1)))
+                  (mac-halign (set halign (arg 1)))
+                  (mac-valign (set valign (arg 1)))
+                  (mac-char-spacing (set cspace (arg 1)))
+                  (mac-line-spacing (set lspace (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "text" arg)))
+                (switch arg
+                  (mac-text text)
+                  (mac-font font)
+                  (mac-fixed fixed)
+                  (mac-halign halign)
+                  (mac-valign valign)
+                  (mac-char-spacing cspace)
+                  (mac-line-spacing lspace)
+                  (else (mac-query-error "text" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-bitmap-text
+  (proc args
+    (local (font text position handler)
+      (begin
+	(set position [0.0 0.0])
+	(set font GLUT_BITMAP_8_BY_13)
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render 
+                   (begin
+                     (glRasterPos2f (position 0) (position 1))
+		     (map (proc (c) (glutBitmapCharacter font c)) text)))
+                  (mac-text (set text (map integer (arg 1))))
+                  (mac-font (set font (arg 1)))
+                  (mac-position (set position (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "bitmap-text" arg)))
+                (switch arg
+                  (mac-text (map character text))
+                  (mac-font font)
+		  (mac-position position)
+                  (else (mac-query-error "bitmap-text" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-stroke-text
+  (proc args
+    (local (font text position handler)
+      (begin
+	(set position [0.0 0.0])
+	(set font GLUT_STROKE_ROMAN)
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (map (proc (c) (glutStrokeCharacter font c)) text))
+		  (mac-text (set text (map integer (arg 1))))
+		  (mac-font (set font (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "stroke-text" arg)))
+                (switch arg
+                  (mac-text (map character text))
+                  (mac-font font)
+                  (else (mac-query-error "stroke-text" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-lines
+  (proc args
+    (local (lines handler)
+      (begin
+        (set lines [])
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (map (proc (line) (gl-draw-line line)) lines))
+                  (mac-lines (set lines (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "lines" arg)))
+                (switch arg
+                  (mac-lines lines)
+                  (else (mac-query-error "lines" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+(set mac-new-points
+  (proc args
+    (local (points handler)
+      (begin
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render (gl-draw-points points))
+                  (mac-points (set points (arg 1)))
+                  (mac-destroy Null)
+                  (else (mac-command-error "points" arg)))
+                (switch arg
+                  (mac-points points)
+                  (else (mac-query-error "points" arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+
+############################################################################
+# SOFTWARE-DECODED Isis movie object
+
+(set mac-im-bufsize 0)
+(set mac-im-jpegbuf Null)
+(set mac-im-imagebuf Null)
+
+(set macaroni-init-movie-buffers
+  (proc (framesize)
+    (if (> (* (framesize 0) (framesize 1)) mac-im-bufsize)
+	(begin
+	  (set mac-im-bufsize (* (framesize 0) (framesize 1) 3))
+	  (if mac-im-jpegbuf (free mac-im-jpegbuf))
+	  (if mac-im-imagebuf (free mac-im-imagebuf))
+	  (set mac-im-jpegbuf (malloc mac-im-bufsize))
+	  (set mac-im-imagebuf (malloc mac-im-bufsize))))))
+	  
+(set mac-new-isis-movie
+  (proc args
+    (local (frame object lastframe jpeglen jd imagebuf mirbuf mute
+		  movie framesize texsize teximage handler)
+      (begin
+        (set frame 100)
+	(set mute False)
+	(set object (mac-new-dynamic-image))
+        (set handler
+          (proc (arg)
+            (if (list? arg) 
+                (switch (arg 0)
+                  (mac-render 
+                   (if (not mute)
+		       (if (and movie (!= lastframe frame))
+			   (begin
+			     (set lastframe frame)
+			     (set jpeglen (movie frame mac-im-jpegbuf))
+			     (set jd (jpeg-create-decompress))
+			     (jpeg-set-decompress-source-buffer jd mac-im-jpegbuf jpeglen)
+			     (jpeg-read-header jd)
+			     (set imagebuf (new-image c-byte 3 framesize 
+						      [3 (* 3 (framesize 0))]
+						      [ mac-im-imagebuf 
+							(+ mac-im-imagebuf 1)
+							(+ mac-im-imagebuf 2) ]))
+			     (set mirbuf (vertical-mirror-image imagebuf))
+			     (jpeg-decompress jd 3 framesize ((mirbuf buf-addrs) 0) 
+					      (mirbuf buf-steps))
+			     (jpeg-destroy-decompress jd)
+			     (object [mac-subimage imagebuf [0 0]] arg))
+			   (object arg))))
+                  (mac-frame (set frame (arg 1)))
+                  (mac-movie (begin
+                               (set movie (arg 1))
+			       (set lastframe Null)
+			       (if (and movie (!= framesize (movie "framesize")))
+				   (begin
+				     (set framesize (movie "framesize"))
+				     (set texsize (gl-find-texture-size framesize))
+				     (set teximage (gl-new-image 3 texsize))
+				     (image-fill-constant 128 teximage)
+				     (macaroni-init-movie-buffers framesize)
+				     (object [mac-position (map real (/ framesize [-2 -2]))]
+					     [mac-size (map real framesize)]
+					     [mac-texposition (map real (/ framesize [-2 -2]))]
+					     [mac-texsize (map real texsize)]
+					     [mac-format GL_RGB8]
+					     [mac-image teximage])
+				     (free-image teximage)))))
+		  (mac-mute (set mute (arg 1)))
+		  (else (object arg)))
+                (switch arg	
+                  (mac-frame frame)
+                  (mac-movie movie)
+                  (mac-mute mute)
+                  (else (object arg))))))
+        (map handler args)
+        (proc al (tail (map handler al)))))))
+

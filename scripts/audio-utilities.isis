@@ -1,0 +1,278 @@
+# some audio utilities
+
+(set audio-calc-size 
+  (proc (secs chans rate bits)
+    (bit-and (integer (* secs rate chans (/ bits 8)))
+	     (bit-not (- (* chans (/ bits 8)) 1)))))
+
+(set audio-read-wave-header
+  (proc (port)
+    (local (buf rifftag wavetag fmttag fmtsize format 
+		chans rate bits datatag datasize offset)
+      (begin
+	(set buf (malloc 20))
+	(read-raw port 20 buf)
+	(set rifftag (buf [c-char 4 0]))
+	(set wavetag (buf [c-char 4 8]))
+	(set fmttag (buf [c-char 4 12]))
+	(set fmtsize (buf [c-int 0 16]))
+	(free buf)
+	(if (and (= rifftag "RIFF") 
+		 (= wavetag "WAVE") 
+		 (= fmttag "fmt "))
+	    (begin
+	      (set buf (malloc fmtsize))
+	      (read-raw port fmtsize buf)
+	      (set format (buf [c-short 0 0]))
+	      (set chans (buf [c-short 0 2]))
+	      (set rate (buf [c-int 0 4]))
+	      (set bits (buf [c-short 0 14]))
+	      (free buf)
+	      (set buf (malloc 8))
+	      (read-raw port 8 buf)
+	      (set datatag (buf [c-char 4 0]))
+	      (set datasize (buf [c-int 0 4]))
+	      (free buf)
+	      (set offset (+ 20 fmtsize 4))
+	      (if (and (= format 1) 
+		       (= datatag "data"))
+		  [ chans rate bits datasize offset ])))))))
+		    
+(set audio-write-wave-header
+  (proc (port chans rate bits datasize)
+    (local (headbuf)
+      (begin
+	(set headbuf (malloc 44))
+	(headbuf [c-char 4 0] "RIFF")
+	(headbuf [c-int 0 4] (+ datasize 36))
+	(headbuf [c-char 4 8] "WAVE")
+	(headbuf [c-char 4 12] "fmt ")
+	(headbuf [c-int 0 16] 16)
+	(headbuf [c-short 0 20] 1)
+	(headbuf [c-short 0 22] chans)
+	(headbuf [c-int 0 24] rate)
+	(headbuf [c-int 0 28] (* rate chans (/ bits 8)))
+	(headbuf [c-short 0 32] (* chans (/ bits 8)))
+	(headbuf [c-short 0 34] bits)
+	(headbuf [c-char 4 36] "data")
+	(headbuf [c-int 0 40] datasize)
+	(write-raw port 44 headbuf)
+	(free headbuf)))))
+
+(set audio-wave-to-raw
+  (proc (infilename outfilename)
+    (local (inport outport wavehead)
+      (cond 
+       ((not (set inport (open-input infilename)))
+	(print "Could not open input wave file " infilename newline))
+       ((not (set wavehead (audio-read-wave-header inport)))
+	(begin 
+	  (close inport)
+	  (print "Input file was not a WAVE file. " infilename newline)))
+       ((not (set outport (open-output outfilename)))
+	(begin
+	  (close inport)
+	  (print "Could not open output raw file " outfilename newline)))
+       (True (begin
+	       (transfer-data inport outport (wavehead 3))
+	       (close inport)
+	       (close outport)
+	       True))))))
+
+(set audio-raw-to-wave
+  (proc (infilename outfilename chans rate bits)
+    (local (inport outport numbytes)
+      (cond 
+       ((not (set inport (open-input infilename)))
+	(print "Could not open input raw file " infilename newline))
+       ((not (set outport (open-output outfilename)))
+	(begin
+	  (close inport)
+	  (print "Could not open output WAVE file " outfilename newline)))
+       (True (begin
+	       (set numbytes (file-size infilename))
+	       (audio-write-wave-header outport chans rate bits numbytes)
+	       (transfer-data inport outport numbytes)
+	       (close inport)
+	       (close outport)
+	       True))))))
+
+############################################################################
+# alsa audio play/record routines
+
+(set alsa-play-raw-port
+  (proc (port chans rate bits unsigned bigendian secs)
+    (local (alsa bufsamps bufbytes buf bytestogo numbytes silence)
+      (if (not (set alsa (alsa-open-output))) 
+	  (print "Could not open ALSA audio." newline)
+	  (if (not (set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans rate))) 
+	      (begin (print "Error ALSA audio setup." newline) (alsa-close alsa))
+	      (begin
+		(set bufbytes (* chans (/ bits 8) bufsamps))
+		(set buf (malloc bufbytes))
+		(set bytestogo (if secs (audio-calc-size secs chans rate bits) bufbytes))
+		(set silence (if (= bits 8) 128 0))
+		(alsa-prepare alsa)
+		(while (and bytestogo 
+			    (set numbytes (read-raw port (min bytestogo bufbytes) buf)))
+		  (begin
+		    (if (!= numbytes bufbytes) 
+			(set-memory (- bufbytes numbytes) silence (+ buf numbytes)))
+		    (alsa-write alsa bufsamps buf)
+		    (if secs (set bytestogo (- bytestogo numbytes)))))
+		(alsa-drain alsa)
+		(alsa-close alsa)
+		True))))))
+
+(set audio-play-raw-port alsa-play-raw-port)
+
+(set alsa-play-raw-file
+  (proc (filename chans rate bits unsigned bigendian)
+    (local (port res)
+      (if (not (set port (open-input filename)))
+	  (print "Could not open audio file " filename newline)
+	  (begin
+	    (set res (alsa-play-raw-port port chans rate bits unsigned bigendian Null))
+	    (close port)
+	    res)))))
+
+(set audio-play-raw-file alsa-play-raw-file)
+
+(set alsa-play-wave-file
+  (proc (filename)
+    (local (port wavhead res)
+      (if (not (set port (open-input filename)))
+	  (print "Could not open WAVE file " filename newline)
+	  (begin
+	    (set wavhead (audio-read-wave-header port))
+	    (set res
+	      (alsa-play-raw-port port (wavhead 0) (wavhead 1) (wavhead 2) 
+				  (= 8 (wavhead 2)) False Null))
+	    (close port)
+	    res)))))
+
+(set audio-play-wave-file alsa-play-wave-file)
+
+(set alsa-record-raw-port
+  (proc (port chans rate bits unsigned bigendian secs stopfunc)
+    (local (alsa bufsamps bufbytes buf bytestogo numbytes silence)
+      (if (not (set alsa (alsa-open-input))) 
+	  (print "Could not open ALSA audio." newline)
+	  (if (not (set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans rate)))
+	      (begin (print "Error ALSA audio setup." newline) (alsa-close alsa))
+	      (begin
+		(set bufbytes (* chans (/ bits 8) bufsamps))
+		(set buf (malloc bufbytes))
+		(set bytestogo (if secs (audio-calc-size secs chans rate bits) bufbytes))
+		(set silence (if (= bits 8) 128 0))
+		(alsa-prepare alsa)
+		(print "Recording..." newline)
+		(alsa-start alsa)
+		(while (and bytestogo (or (not stopfunc) (not (stopfunc))))
+		  (begin
+		    (alsa-read alsa bufsamps buf)
+		    (set numbytes (write-raw port (min bytestogo bufbytes) buf))
+		    (if secs (set bytestogo (- bytestogo numbytes)))))
+		(print "Stopped." newline)
+		(alsa-close alsa)
+		True))))))
+
+(set audio-record-raw-port alsa-record-raw-port)
+
+(set alsa-record-raw-file
+  (proc (filename chans rate bits unsigned bigendian secs stopfunc)
+    (local (port res)
+      (if (not (set port (open-output filename)))
+	  (print "Could not open audio file " filename newline)
+	  (begin
+	    (set res (alsa-record-raw-port port chans rate bits unsigned bigendian secs stopfunc))
+	    (close port)
+	    res)))))
+
+(set audio-record-raw-file alsa-record-raw-file)
+
+############################################################################
+# alsa audio player high level object
+
+(set ap-process 40)
+(set ap-file 41)
+(set ap-port 42)
+(set ap-seek 43)
+(set ap-play 44)
+(set ap-stop 45)
+(set ap-loop 46)
+(set ap-quit 50)
+
+(set alsa-new-audio-player
+  (proc (chans rate bits unsigned bigendian)
+    (local (alsa bufsamps bufbytes buf alsafd silence pause playing process numbytes
+		 bytestogo command offset fromfile port loopmode playtoend)
+      (if (not (set alsa (alsa-open-output))) 
+	  (print "Could not open ALSA audio." newline)
+	  (if (not (set bufsamps (alsa-setup alsa bits unsigned bigendian rate chans rate)))
+	      (begin (print "Error ALSA audio setup." newline) (alsa-close alsa))
+	      (begin
+		(set bufbytes (* chans (/ bits 8) bufsamps))
+		(set buf (malloc bufbytes))
+		(set alsafd (unix-new-port-FD "ALSA" (alsa-filedes alsa) True True))
+		(set silence (if (= bits 8) 128 0))
+		(set pause
+		  (proc ()
+		    (begin
+		      (alsa-drop alsa)
+		      (set playing False))))
+		(set process 
+		  (proc ()
+		    (while (and playing bytestogo (write-ready alsafd)
+				(set numbytes (read-raw port (min bytestogo bufbytes) buf)))
+		      (begin
+			(if (!= numbytes bufbytes) 
+			    (set-memory (- bufbytes numbytes) silence (+ buf numbytes)))
+			(alsa-write alsa bufsamps buf)
+			(if (not playtoend) (set bytestogo (- bytestogo numbytes)))))))
+		(set command
+		  (proc (msg)
+		    (switch (msg 0)
+		      (ap-process (if playing (process)))
+		      (ap-file (begin
+				 (if playing (pause))
+				 (if (and port fromfile) (close port))
+				 (set offset 0)
+				 (set fromfile False)
+				 (set port Null)
+				 (if (set port (open-input (msg 1))) (set fromfile True))))
+		      (ap-port (begin
+				 (if playing (pause))
+				 (if (and port fromfile) (close port))
+				 (set offset 0)
+				 (set fromfile False)
+				 (set port (msg 1))))
+		      (ap-seek (begin
+				 (if playing (pause))
+				 (set offset (audio-calc-size (msg 1) chans rate bits))
+				 (seek port offset)))
+		      (ap-play (begin
+				 (if playing (pause))
+				 (if (> (length msg) 1)
+				     (begin
+				       (set bytestogo (audio-calc-size (msg 1) chans rate bits))
+				       (set playtoend False))
+				     (begin
+				       (set bytestogo bufbytes)
+				       (set playtoend True)))
+				 (alsa-prepare alsa)
+				 (set playing True)
+				 (process)))
+		      (ap-stop (if playing (pause)))
+		      (ap-loop (set loopmode (msg 1)))
+		      (ap-quit (begin
+				 (set pause Null)
+				 (set process Null)
+				 (set command Null)
+				 (if (and port fromfile) (close port))
+				 (alsa-drop alsa)
+				 (alsa-close alsa)
+				 (free buf))))))
+		(proc args (map command args))))))))
+
+(set new-audio-player alsa-new-audio-player)

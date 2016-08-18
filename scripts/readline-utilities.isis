@@ -1,0 +1,43 @@
+# GNU readline utilities
+# for interactive Isis shells
+# stefan agamanolis
+
+# redefine 'interactive' to use readline
+
+(set interactive
+  (proc ()
+    (interpret-port (new-readline-port "Isis Readline Console") False False)))
+
+(set new-readline-port
+  (proc (name)
+    (new-port name "READLINE" Null True False
+	      # close function
+	      (proc (id) True)
+	      # read function
+	      (proc (id size ptr) 0)
+	      # readline function
+	      (proc (id size ptr endval)
+		(local (line len)
+		  (begin
+		    (set line (rl-readline "-> "))
+		    (if line (rl-add-history line))
+		    (if (!= line Null)
+			(begin
+			  (set line (tail-insert newline line))
+			  (set len (min size (length line)))
+			  (ptr [c-byte len] line))
+			(set len 0))
+		    len)))
+	      # write function
+	      (proc (id size ptr) 0)
+	      # tell function
+	      (proc (id) Null)
+	      # seek function
+	      (proc (id pos) Null)
+	      # read-ready function
+	      (proc (id time) Null)
+	      # write-ready function
+	      (proc (id time) Null)
+	      # configure function
+	      (proc args Null) )))
+

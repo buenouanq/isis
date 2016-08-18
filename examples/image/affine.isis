@@ -1,0 +1,21 @@
+
+(set input-image (retrieve-url-image "file:/usr/local/isis/media/nana.jpg"))
+
+(set inputsize (input-image buf-size))
+
+(set output-image (new-image c-byte 3 [300 300]))
+(set remap-image (new-image c-int 2 [300 300]))
+
+(set params (affine-combine (affine-translate (* [-0.5 -0.5] inputsize))
+			    (affine-scale 0.5)
+			    (affine-rotate 45) 
+			    (affine-translate [150 150])))
+
+(image-warp-map params inputsize remap-image)
+(image-warp False input-image output-image remap-image)
+
+(set inwin (xwin-create Null "Original" [100 200] inputsize))
+(xwin-display-image inwin input-image)
+
+(set outwin (xwin-create Null "Warped" [600 200] [300 300]))
+(xwin-display-image outwin output-image)

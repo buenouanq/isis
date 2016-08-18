@@ -1,0 +1,20 @@
+
+
+(load "midi.isis")
+
+(set escape-char (character 27))
+
+(set midic-initialize
+  (proc (device)
+    (local (port timer)
+      (begin
+	(set timer (new-timer))
+        (set port (open-update device))
+        (initialize-serial-port port 38400 8 2 Null True)
+        (write-string port escape-char escape-char escape-char)  
+        (sleep 0.5)
+        (write-string port "HEAG")  # go to binary interface mode
+        (timer 'r')
+        (while (< (timer) 1.0) (midi-flush-print port))
+        port))))
+

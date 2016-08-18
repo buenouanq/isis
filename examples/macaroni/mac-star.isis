@@ -1,0 +1,31 @@
+############################################################################
+# Macaroni STAR
+# Creates a star made of 2 lines
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Star")
+(set macwin (macaroni-create-window "Star" [300 300] [100 100] True))
+
+############################################################################
+# Create Macaroni lines and transform objects
+
+(set lobj (mac-new-lines [mac-lines [ [ [-20.0 -20.0] [20.0 -20.0] [20.0 20.0] 
+                                        [-20.0 20.0] [-20.0 -20.0] ]
+                                      [ [0.0 30.0] [30.0 0.0] [0.0 -30.0] 
+                                        [-30.0 0.0] [0.0 30.0] ] ]
+                          ]))
+(set ltrans (mac-new-transform [mac-object lobj]
+                               [mac-position [150.0 150.0]]
+                               [mac-scale [2.5 2.5]]
+                               [mac-line-width 1.0]
+                               [mac-color [0.3 0.8 0.3 1.0]]))
+
+############################################################################
+# Update window and start rendering
+
+(macaroni-update-window macwin ltrans True)
+(macaroni-start Null)

@@ -1,0 +1,46 @@
+# serial interface to alcorn show controllers
+# stefan agamanolis
+
+(set alcorn-initialize
+  (proc (device-name)
+    (local (port)
+      (begin
+        (set port (open-update device-name))
+	(initialize-serial-port port 38400 8 1 Null False)
+	(if (not (bound? alcorn-cmdbuf)) (set alcorn-cmdbuf (malloc 1024)))
+	(if (not (bound? alcorn-recbuf)) (set alcorn-recbuf (malloc 1024)))
+	(alcorn-cmdbuf c-byte (integer 0xF5))
+	(set alcorn-cmdstart (+ alcorn-cmdbuf 1))
+	(while (pending port) (read-raw port 1 alcorn-recbuf))  # flush port
+	port))))
+
+(set alcorn-write
+  (proc (port bytes)
+    (begin
+      (alcorn-cmdstart c-byte bytes)
+      (alcorn-cmdstart [c-byte 0 (length bytes)] (mod (apply + bytes) 256))
+      (display (alcorn-cmdbuf [c-byte (+ (length bytes) 2)]))
+      (write-raw port (+ (length bytes) 2) alcorn-cmdbuf)
+      (print "Wrote command " bytes newline))))
+
+(set alcorn-read-ack
+  (proc (port)
+    (if (read-raw port 1 alcorn-recbuf) (alcorn-recbuf c-byte))))
+
+(set alcorn-read-char
+  (proc (port)
+    (if (read-raw port 1 alcorn-recbuf) (alcorn-recbuf c-char))))
+
+(set alcorn-nop
+  (proc (port)
+    (begin 
+      (alcorn-write port [0 1 1 1])
+      (alcorn-read-ack port))))
+
+(set alcorn-dmx-set
+  (proc (port chan val)
+    (begin 
+      (alcorn-write port [0 1 3 7 chan val])
+      (alcorn-read-ack port))))
+
+

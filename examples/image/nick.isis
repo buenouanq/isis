@@ -1,0 +1,19 @@
+
+# create an x window
+(set xwin (xwin-create))
+
+# load an image from url using www utilities library
+(set url "file:/usr/local/isis/media/nick.gif")
+(set image1 (retrieve-url-image url))
+
+# make a big red image
+(set image2 (new-standard-image 3 [640 480]))
+(image-fill-constant 255 (isolate-channel 0 image2))
+(image-fill-constant 0 (isolate-channels 1 2 image2))
+
+# transfer image1 into image2 at position [100 100]
+(set buflist (intersect-images [100 100] image1 image2))
+(image-transfer (buflist 0) (buflist 1))
+
+# display the image
+(xwin-display-image xwin image2)

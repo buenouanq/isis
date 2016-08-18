@@ -1,0 +1,108 @@
+# Smart Window object definitions
+# Stefan Agamanolis, July 1996
+
+(set new-smart-window
+  (proc ()
+    (local (posinf neginf dminx dminy dmaxx dmaxy sminx sminy
+                   smaxx smaxy res)
+      (begin
+        (set posinf 1000000000)
+        (set neginf -1000000000)
+        (set dminx posinf)		# areas modified since the last display
+        (set dminy posinf)
+        (set dmaxx neginf)
+        (set dmaxy neginf)
+        (set sminx posinf)		# areas modified but not in background
+        (set sminy posinf)
+        (set smaxx neginf)
+        (set smaxy neginf)
+        (set res Null)
+        (proc args
+          (switch (length args)
+            (2 
+             (switch (args 0)
+               ('m' (local (minx miny maxx maxy)
+                      (begin
+                        (set minx (integer ((args 1) 0)))
+                        (set miny (integer ((args 1) 1)))
+                        (set maxx (integer ((args 1) 2)))
+                        (set maxy (integer ((args 1) 3)))
+                        (if (< minx dminx) (set dminx minx))
+                        (if (< miny dminy) (set dminy miny))
+                        (if (> maxx dmaxx) (set dmaxx maxx))
+                        (if (> maxy dmaxy) (set dmaxy maxy))
+                        (if (< minx sminx) (set sminx minx))
+                        (if (< miny sminy) (set sminy miny))
+                        (if (> maxx smaxx) (set smaxx maxx))
+                        (if (> maxy smaxy) (set smaxy maxy))
+                        Null)))
+               ('d' (begin
+                      (set res (if (< dmaxx 0) 
+                                   Null	# if nothing needs displaying
+                                   [ (isolate-sub-image 
+                                      [dminx dminy]
+                                      [(- dmaxx dminx -1) (- dmaxy dminy -1)] 
+                                      (args 1)) 
+                                     [dminx dminy] ]))
+                      (set dminx posinf)
+                      (set dminy posinf)
+                      (set dmaxx neginf)
+                      (set dmaxy neginf)
+                      res))))
+            (3
+             (switch (args 0)
+               ('m' (local (minx miny maxx maxy)
+                      (begin
+                        (set minx (integer ((args 1) 0)))
+                        (set miny (integer ((args 1) 1)))
+                        (set maxx (+ minx -1 (integer ((args 2) 0))))
+                        (set maxy (+ miny -1 (integer ((args 2) 1))))
+                        (if (< minx dminx) (set dminx minx))
+                        (if (< miny dminy) (set dminy miny))
+                        (if (> maxx dmaxx) (set dmaxx maxx))
+                        (if (> maxy dmaxy) (set dmaxy maxy))
+                        (if (< minx sminx) (set sminx minx))
+                        (if (< miny sminy) (set sminy miny))
+                        (if (> maxx smaxx) (set smaxx maxx))
+                        (if (> maxy smaxy) (set smaxy maxy))
+                        Null)))
+               ('c' (begin
+                      (if (and (<= sminx smaxx) (<= sminy smaxy))
+                          (begin 
+                            (image-transfer # transfer bg to fg
+                             (isolate-sub-image 
+                              [sminx sminy]
+                              [(- smaxx sminx -1) (- smaxy sminy -1)] 
+                              (args 2)) 
+                             (isolate-sub-image 
+                              [sminx sminy]
+                              [(- smaxx sminx -1) (- smaxy sminy -1)] 
+                              (args 1)))
+                            (if (< sminx dminx) (set dminx sminx))
+                            (if (< sminy dminy) (set dminy sminy))
+                            (if (> smaxx dmaxx) (set dmaxx smaxx))
+                            (if (> smaxy dmaxy) (set dmaxy smaxy))
+                            (set sminx posinf)
+                            (set sminy posinf)
+                            (set smaxx neginf)
+                            (set smaxy neginf)
+                            Null))))
+               ('s' (begin
+                      (if (and (<= sminx smaxx) (<= sminy smaxy))
+                          (begin 
+                            (image-transfer # transfer fg to bg
+                             (isolate-sub-image 
+                              [sminx sminy]
+                              [(- smaxx sminx -1) (- smaxy sminy -1)] 
+                              (args 1)) 
+                             (isolate-sub-image 
+                              [sminx sminy]
+                              [(- smaxx sminx -1) (- smaxy sminy -1)] 
+                              (args 2)))
+                            (set sminx posinf)
+                            (set sminy posinf)
+                            (set smaxx neginf)
+                            (set smaxy neginf)
+                            Null))))))
+            (else (print "*** Wrong number of arguments to smart window\n"))
+            ))))))

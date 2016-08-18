@@ -1,0 +1,12 @@
+# Convert a GIF image to JPEG
+
+(set infile (open-input "banjo.gif"))
+(set image ((read-gif infile) 0))  # using first and only frame in sequence
+(close infile)
+
+(set outfile (open-output "banjo.jpg"))
+(write-jpeg outfile image 50)
+(close outfile)
+
+(free-image image)
+

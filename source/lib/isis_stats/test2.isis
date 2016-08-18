@@ -1,0 +1,39 @@
+# test.isis
+
+(set in-fname "test-image")
+(set infile (input-image-datfile in-fname))
+
+(print (append "Statistics of: " in-fname "\n" ))
+(if (= infile Null)
+    (begin
+      (print "Unable to open one or more image file(s)" )
+      (exit)))
+(set in-frame (infile))
+
+(print "This image is of type ")
+(set type ((in-frame buf-type) buf-type-sample))
+(switch type
+	(buf-type-sample-byte (print "byte"))
+        (buf-type-sample-short (print "short"))
+        (buf-type-sample-int (print "integer"))
+        (buf-type-sample-float (print "float"))
+        (buf-type-sample-double (print "double")))
+(print ", of which it has ")
+(display (apply * (in-frame buf-dims)))
+
+(let ((new-frame (switch type
+			 (buf-type-sample-byte   new-byte-image)
+			 (buf-type-sample-short  new-short-image)
+			 (buf-type-sample-int    new-integer-image)
+			 (buf-type-sample-float  new-float-image)
+			 (buf-type-sample-double new-double-image))))
+  (set temp-frame (new-frame (in-frame buf-chans) (in-frame buf-dims))))
+
+(image-gainbias 0.5 0.0 in-frame temp-frame )
+
+(set outfile
+     (output-image-datfile "delete.me" 1 (in-frame buf-chans)
+			   (in-frame buf-dims) type ))
+(outfile temp-frame)
+(outfile 'q')
+

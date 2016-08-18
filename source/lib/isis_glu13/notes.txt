@@ -1,0 +1,6 @@
+
+
+for irix6, take out GLU_MAJOR_VERSION, GLU_MINOR_VERSION,
+   GLU_OBJECT_SPACE_ERROR_TOLERANCE, GLU_OBJECT_SPACE
+
+also, ignore warnings concerning incompatible pointer types.

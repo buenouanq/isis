@@ -1,0 +1,66 @@
+############################################################################
+# Audio player example program
+# Stefan Agamanolis
+
+############################################################################
+# Set filename and audio characteristics
+
+(set filename "/usr/local/isis/media/repo/audio")
+(set chans 2)
+(set rate 22050)
+(set bits 16)
+
+############################################################################
+# Create audio player and set source
+
+(set aplayer (new-audio-player chans rate bits (= bits 8) False))
+(aplayer [ap-file filename])
+
+############################################################################
+# Print information
+
+(print newline)
+(print "Playing " filename newline)
+(print chans "channels " rate "Hz " bits "bit audio" newline newline)
+(print "Press return to start/stop playback," newline)
+(print "or enter an integer number of seconds to set playback point" newline)
+
+############################################################################
+# Main loop
+
+(set playing False)
+
+(while True 
+  (begin 
+
+    # wait for keyboard input for 1/2 second
+    (if (pending (current-input-port) 100000)
+	(begin
+	  # if keyboard input is pending, read a line
+	  (set line (read-string))
+	  # if line is blank, toggle playback, otherwise set position
+	  (if (not line) 
+	      (if playing 
+		  (begin 
+		    # If audio playing, then pause
+		    (aplayer [ap-stop]) 
+		    (print "Paused" newline)
+		    (set playing False))
+		  (begin 
+		    # If audio paused, then play
+		    (aplayer [ap-play]) 
+		    (print "Playing" newline)
+		    (set playing True)))
+	      (begin
+		# Set playback position
+		(set secs (real (eval line)))
+		(aplayer [ap-seek secs])
+		(print "Playback position set to " secs "seconds" newline) 
+		# Restart playback if we were already playing
+		(if playing (aplayer [ap-play]))))))
+    
+    # invoke ap-process within the loop at least every second
+    (aplayer [ap-process])
+
+    ))
+

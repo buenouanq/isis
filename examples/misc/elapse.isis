@@ -1,0 +1,8 @@
+
+(set timer (new-timer))                             # create a timer
+(while True                                         # loop forever
+  (begin 
+    (sleep 2)                                       # sleep a couple seconds
+    (set curtime (timer))                           # get current time
+    (print curtime "seconds have elapsed." newline) # print a message
+    (if (> curtime 30.0) (timer 'r'))))             # reset every 30 seconds

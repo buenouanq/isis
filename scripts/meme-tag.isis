@@ -1,0 +1,126 @@
+### isis meme tag interface routines
+### written by stefan agamanolis
+
+(set meme-readbuf-len 1024)
+(set meme-writebuf-len 1024)
+(set meme-readbuf (malloc meme-readbuf-len))
+(set meme-writebuf (malloc meme-writebuf-len))
+
+(set meme-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 meme-readbuf))))
+
+(set meme-baud tty-b19200)
+
+(set meme-tag-ready (integer 0x05))
+(set meme-tag-ack (integer 0x06))
+
+(set meme-seek-command (integer 0x00))
+(set meme-read-command (integer 0x01))
+(set meme-write-command (integer 0x02))
+
+(set meme-packet-ready-addr-high (integer 0x3F))
+(set meme-packet-ready-addr-low (integer 0x03))
+(set meme-packet-ready-yes (integer 0x02))
+(set meme-packet-ready-no (integer 0x01))
+
+(set meme-packet-type-addr (integer 0x301))
+(set meme-packet-type-valid (integer 0xC8))
+
+(set meme-packet-person-id-addr (integer 0x0302))
+(set meme-packet-person-name-addr (integer 0x0306))
+
+(set meme-high (proc (x) (& (>> x 8) 255)))
+(set meme-low (proc (x) (& x 255)))
+
+(set meme-initialize
+  (proc args
+    (local (device-name baud port)
+      (begin
+        (set device-name (args 0))
+        (set baud (if (> (length args) 1) (args 1) meme-baud))
+        (set port (open-update device-name))
+        (set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl) 0
+                      baud baud)
+        (meme-flush-port port)
+        (meme-writebuf c-byte meme-tag-ready)
+        (meme-readbuf c-byte 0)
+        (write-raw port 1 meme-writebuf)
+        (if (and (read-raw port 1 meme-readbuf) 
+                 (= (meme-readbuf c-byte) meme-tag-ack))
+            (begin
+              (print "Meme tag interface ready." newline)
+              port)
+            (begin
+              (print "** Meme tag interface not responding." newline)
+              (close port)
+              Null))))))
+
+
+(set meme-set-pointer
+  (proc (port high low)
+    (begin
+      (pack [meme-seek-command high low] c-byte 3 meme-writebuf)
+      (write-raw port 3 meme-writebuf))))
+
+(set meme-seek
+  (proc (port high low)
+    (meme-set-pointer port high low)))
+
+(set meme-getchar
+  (proc (port)
+    (begin
+      (meme-writebuf c-byte meme-read-command)
+      (write-raw port 1 meme-writebuf)
+      (if (read-raw port 1 meme-readbuf)
+          (meme-readbuf c-byte)
+          Null))))
+
+(set meme-putchar
+  (proc (port char)
+    (begin
+      (pack [meme-write-command (integer char)] c-byte 2 meme-writebuf)
+      (write-raw port 2 meme-writebuf))))
+
+(set meme-read
+  (proc (port len)
+    (map (proc (x) (meme-getchar port)) (make-list len Null))))
+
+(set meme-packet-ready
+  (proc (port)
+    (begin
+      (meme-seek port meme-packet-ready-addr-high meme-packet-ready-addr-low)
+      (= (meme-getchar port) meme-packet-ready-yes))))
+
+(set meme-clear-packet-ready
+  (proc (port)
+    (begin
+      (meme-seek port meme-packet-ready-addr-high meme-packet-ready-addr-low)
+      (meme-putchar port meme-packet-ready-no))))
+
+(set meme-get-packet-type
+  (proc (port)
+    (begin
+      (meme-seek port (meme-high meme-packet-type-addr) (meme-low meme-packet-type-addr))
+      ((meme-read port 1) 0))))
+
+(set meme-get-packet-id
+  (proc (port)
+    (local (res)
+      (begin
+        (meme-seek port (meme-high meme-packet-person-id-addr) (meme-low meme-packet-person-id-addr))
+        (set res (meme-read port 2))
+        (+ (* 255 (res 0)) (res 1))))))
+
+(set meme-get-packet-user
+  (proc (port)
+    (local (size res)
+      (begin
+        (meme-seek port (meme-high meme-packet-person-name-addr) (meme-low meme-packet-person-name-addr))
+        (set size (meme-getchar port))
+        (map character (meme-read port size))))))
+
+(set meme-valid-packet
+  (proc (port)
+    (= (meme-get-packet-type port) meme-packet-type-valid)))
+

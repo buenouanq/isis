@@ -1,0 +1,3 @@
+#!/usr/local/isis/bin/isis -q
+
+(load "utilities.isis")

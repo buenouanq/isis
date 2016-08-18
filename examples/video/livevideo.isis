@@ -1,0 +1,8 @@
+
+(set framesize [640 480])
+(set vidcap (new-video-capture [vc-size framesize]
+			       [vc-field vc-interlace]))
+(set window (win-create [win-size framesize] 
+			[win-title "Capture"]))
+(while True (window [win-put (vidcap)] 
+		    [win-output]))

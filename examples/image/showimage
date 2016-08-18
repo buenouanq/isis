@@ -1,0 +1,11 @@
+#!/usr/local/isis/bin/isis -q
+
+(set url (command-line-args 0))
+
+(print "Retrieving " url "...")
+
+(display-url-image url)
+
+(print "Press return to exit ")
+
+(read-string)

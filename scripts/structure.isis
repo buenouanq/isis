@@ -1,0 +1,49 @@
+# Structure object definition
+# Stefan Agamanolis, June 1996
+
+(set new-structure
+  (proc initvals
+    (local (db len pos)
+      (begin
+        (set db (if (> (length initvals) 0) (initvals 0) []))
+        (set len (length db))
+        (set pos 0)
+        (proc args
+          (switch (length args)
+            (0 db)      # Return structure as a list
+            (1 (begin   # Return value of structure for this reference
+                 (set pos 0)
+                 (while (and (< pos len) (!= ((db pos) 0) (args 0)))
+                   (set pos (+ pos 1)))
+                 (if (= pos len) Null ((db pos) 1))))
+            (2 (begin   # Add or replace an entry in the structure
+                 (set pos 0)
+                 (while (and (< pos len) (!= ((db pos) 0) (args 0)))
+                   (set pos (+ pos 1)))
+                 (if (= pos len)
+                     (if (!= (args 1) Null)
+                         (begin
+                           (set len (+ len 1))
+                           (set db (tail-insert args db))))
+                     (if (!= (args 1) Null)
+                         (set db (change-item pos args db))
+                         (begin (set len (- len 1))
+                                (set db (remove-item pos db)))))
+                 (args 1)))))))))
+
+(set read-structure
+  (proc (fd strc)
+    (begin
+      (local (line)
+        (begin
+          (set line True)
+          (while (set line (read-string fd)) (apply strc (eval line)))))
+      strc)))
+
+(set write-structure
+  (proc (fd strc)
+    (begin
+      (map (proc (x) (write-string fd x newline)) (strc))
+      (write-string fd newline)
+      strc)))
+

@@ -1,0 +1,13 @@
+(set sport (tcp-open "satyricon" 1234))
+(write sport [ "stefan" "E15-348" ])
+(write sport [ "jacky" "E15-351" ])
+(write sport [ "wad" "E15-355" ])
+(close sport)
+
+(set sport (tcp-open "satyricon" 1234))
+(write sport ["wad"])
+(set result (read sport))
+(print "Wad is located in room " result newline)
+(close sport)
+
+

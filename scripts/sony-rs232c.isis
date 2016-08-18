@@ -1,0 +1,138 @@
+### sony vtr interface routines
+### written by stefan agamanolis
+
+(load "timecode.isis")
+
+(set vtr-msgbuf-len 96)
+(set vtr-msgbuf (malloc vtr-msgbuf-len))
+
+(set vtr-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 vtr-msgbuf))))
+
+(set vtr-flush-print
+  (proc (port)
+    (while (pending port) 
+      (begin
+        (read-raw port 1 vtr-msgbuf)
+        (print (vtr-msgbuf c-char))))))
+
+# call the following function to initialize the serial port and
+# get a file handle to send midi messages on
+
+(set vtr-initialize
+  (proc args
+    (local (device-name baud port)
+      (begin
+        (set device-name (args 0))
+        (set baud (if (> (length args) 1) (args 1) tty-b9600))
+        (set port (open-update device-name))
+        (set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl) 0
+                      baud baud)
+        (vtr-flush-port port)
+        port))))
+
+(set vtr-c-e (integer 0x41))
+(set vtr-c-l (integer 0x56))
+(set vtr-exp-1 (integer 0xd8))
+(set vtr-exp-7 (integer 0xde))
+(set vtr-exp-8 (integer 0xdf))
+
+(set vtr-play [ (integer 0x3a) ] )
+(set vtr-reverse-play [ (integer 0x4a) ] )
+(set vtr-forward-fast [ (integer 0x3b) ] )
+(set vtr-reverse-fast [ (integer 0x4b) ] )
+(set vtr-forward-slow [ (integer 0x3c) ] )
+(set vtr-reverse-slow [ (integer 0x4c) ] )
+(set vtr-forward-step [ (integer 0x3d) ] )
+(set vtr-reverse-step [ (integer 0x4d) ] )
+(set vtr-forward-scan [ (integer 0x3e) ] )
+(set vtr-reverse-scan [ (integer 0x4e) ] )
+(set vtr-play-pause [ (integer 0x4f) ] )
+(set vtr-fast-forward [ (integer 0xab) ] )
+(set vtr-rewind [ (integer 0xac) ] )
+(set vtr-forward-shuttle [ (integer 0xb5) ] )
+(set vtr-reverse-shuttle [ (integer 0xb6) ] )
+(set vtr-stop [ (integer 0x3f) ] )
+(set vtr-eject [ (integer 0x2a) ] )
+(set vtr-record [ (integer 0xca) ] )
+(set vtr-record-pause [ (integer 0xcb) ] )
+(set vtr-search-with-data [ vtr-exp-8 (integer 0x93) ] )
+(set vtr-repeat-with-data [ vtr-exp-8 (integer 0x94) ] )
+(set vtr-memory-search [ (integer 0x5b) ] )
+
+(set vtr-memory [ (integer 0x5a) ] )
+(set vtr-record-request [ (integer 0xfa) ] )
+(set vtr-device-type-request [ (integer 0x8f) ] )
+
+(set vtr-time-data-sense (integer 0xa0) )
+(set vtr-u-bit-sense (integer 0xb2) )
+
+(set vtr-enter [ (integer 0x40) ])
+
+(set vtr-receive-byte
+  (proc (port)
+    (begin
+      (read-raw port 1 vtr-msgbuf)
+      (vtr-msgbuf c-byte))))
+
+(set vtr-send-ack-byte
+  (proc (port byte)
+    (begin
+      (vtr-msgbuf c-byte byte)
+      (write-raw port 1 vtr-msgbuf)
+      (vtr-receive-byte port))))
+
+(set vtr-send-byte
+  (proc (port byte)
+    (begin
+      (vtr-msgbuf c-byte byte)
+      (write-raw port 1 vtr-msgbuf))))
+
+(set vtr-send-command
+  (proc args
+    (map (proc (b) (vtr-send-ack-byte (args 0) b))
+         (apply append (allbutfirst 1 args)))))
+
+(set vtr-receive-timecode
+  (proc (port)
+    (begin
+      (vtr-msgbuf c-byte (integer 0xa0))
+      (write-raw port 1 vtr-msgbuf)
+      (read-raw port 8 vtr-msgbuf)
+      (vtr-decode-timecode (vtr-msgbuf [c-byte 8])))))
+
+(set vtr-number-prefix (integer 0x30))
+
+(set vtr-decode-number
+  (proc (num)
+    (bit-and num 15)))
+
+(set vtr-encode-number
+  (proc (num)
+    (bit-or num vtr-number-prefix)))
+
+(set vtr-decode-timecode
+  (proc (numlist)
+    (local (nums)
+      (begin
+        (set nums (map vtr-decode-number numlist))
+        [ (+ (* (nums 0) 10) (nums 1))
+          (+ (* (nums 2) 10) (nums 3))
+          (+ (* (nums 4) 10) (nums 5))
+          (+ (* (nums 6) 10) (nums 7)) ]))))
+
+(set vtr-encode-timecode
+  (proc (timecode)
+    (local (nums)
+      (begin
+        (set nums [ (/ (timecode 0) 10) 
+                    (% (timecode 0) 10)
+                    (/ (timecode 1) 10)
+                    (% (timecode 1) 10)
+                    (/ (timecode 2) 10)
+                    (% (timecode 2) 10)
+                    (/ (timecode 3) 10) 
+                    (% (timecode 3) 10) ])
+        (map vtr-encode-number nums)))))
+

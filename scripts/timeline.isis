@@ -1,0 +1,96 @@
+# Timeline object definition
+# Stefan Agamanolis, June 1996
+
+(set find-tl-pos
+  (proc (tl time len pos)
+    (local (lenminus1)
+      (begin
+        (set lenminus1 (- len 1))
+        (if (or (< pos 0) (>= pos len)) (set pos 0))
+        (while (and (< pos lenminus1) (>= time ((tl (+ pos 1)) 0)))
+          (set pos (+ pos 1)))
+        (while (and (not (= len 0)) (>= pos 0) (< time ((tl pos) 0))) 
+          (set pos (- pos 1)))
+        pos))))
+
+(set interp-linear 'l')
+(set interp-cubic 'c')
+(set interp-none 'n')
+
+(set new-timeline
+  (proc initvals
+    (local (tl len loop gettime pos)
+      (begin
+        (set tl (if (> (length initvals) 0) (initvals 0) []))
+        (set len (if (> (length initvals) 0) (length (initvals 0)) 0))
+        (set loop 0.0)
+        (set gettime 0.0)
+        (set pos 0)
+        (proc args
+          (switch (length args)
+            (0 tl)			# Return timeline as a list
+            (1 (begin			# Return value of timeline at this time
+                 (set gettime (if loop 
+                                  (if (>= (args 0) 0)
+                                      (% (real (args 0)) loop)
+                                      (- loop (% (real (abs (args 0))) loop)))
+                                  (real (args 0))))
+                 (set pos (find-tl-pos tl gettime len pos))
+                 (cond 
+                  ((or (< pos 0) (= len 0)) Null)
+                  ((>= pos (- len 1)) (if (= 4 (length (tl pos)))
+                                          ((tl pos) 3)
+                                          ((tl pos) 1)))
+                  (True 
+                   (local (thiskey thisval nextkey itype)
+                     (begin
+                       (set thiskey (tl pos))
+                       (set thisval (if (= 4 (length thiskey)) 
+                                        (thiskey 3) 
+                                        (thiskey 1)))
+                       (set nextkey (tl (+ pos 1)))
+                       (set itype (if (> (length nextkey) 2) (nextkey 2) 'h'))
+                       (switch itype
+                         ('l' (linear-interpolate 
+                               (/ (- gettime (thiskey 0)) 
+                                  (- (real (nextkey 0)) (thiskey 0))) 
+                               thisval 
+                               (nextkey 1)))
+                         ('c' (if (and (>= pos 1) (< pos (- len 2)))
+                                  (cubic-interpolate 
+                                   (/ (- gettime (thiskey 0))
+                                      (- (real (nextkey 0)) (thiskey 0)))
+                                   ((tl (- pos 1)) 1)
+                                   thisval
+                                   (nextkey 1)
+                                   ((tl (+ pos 2)) 1))
+                                  (linear-interpolate 
+                                   (/ (- gettime (thiskey 0)) 
+                                      (- (real (nextkey 0)) (thiskey 0))) 
+                                   thisval 
+                                   (nextkey 1))))
+                         (else thisval))))))))
+            (else 
+             (if (character? (args 0))
+                 (switch (args 0)
+                   ('w' (set loop (real (args 1)))))
+                 (local (time key)
+                   (begin
+                     (set time (real (args 0)))
+                     (set key (if (real? (args 0)) args (change-item 0 time args)))
+                     # Put a new value in timeline
+                     (set pos (find-tl-pos tl time len pos))
+                     (cond
+                      ((< pos 0) (begin
+                                   (set len (+ len 1))
+                                   (set tl (head-insert key tl))))
+                      ((>= pos len) (begin 
+                                      (set len (+ len 1))
+                                      (set tl (tail-insert key tl))))
+                      ((= ((tl pos) 0) time) 
+                       (set tl (change-item pos key tl)))
+                      (True (begin 
+                              (set len (+ len 1))
+                              (set tl (insert-after pos key tl)))))
+                     Null))))))))))
+

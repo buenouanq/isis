@@ -1,0 +1,38 @@
+
+(set disp
+  (proc ()
+    (begin
+      (glClear GL_COLOR_BUFFER_BIT)
+      (glBegin GL_TRIANGLES)
+      (glColor3f 0.0 0.0 1.0)
+      (glVertex2i 0 0)
+      (glColor3f 0.0 1.0 0.0)
+      (glVertex2i 200 200)
+      (glColor3f 1.0 0.0 0.0)
+      (glVertex2i 20 200)
+      (glEnd)
+      (glFlush))))
+
+(set reshape
+  (proc (w h)
+    (begin
+      (glViewport 0 0 w h) 
+      (glMatrixMode GL_PROJECTION)  
+      (glLoadIdentity)
+      (glOrtho 0.0 (real w) 0.0 (real h) -1.0 1.0)
+      (glScalef 1.0 -1.0 1.0)
+      (glTranslatef 0.0 (* -1.0 (real h)) 0.0))))
+      
+(set progname (pack "simple.isis" c-char))
+(set mainargc (pack [1] c-int))
+(set mainargv (pack [progname] c-pointer))
+
+(glutInit mainargc mainargv)
+(glutCreateWindow "single triangle")
+
+(glutDisplayFunc glut_display)
+(glutReshapeFunc glut_reshape)
+(update-glut-callback-slot glut_display_slot disp)
+(update-glut-callback-slot glut_reshape_slot reshape)
+
+(glutMainLoop)

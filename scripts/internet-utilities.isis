@@ -1,0 +1,293 @@
+# WWW helper routines
+# stefan agamanolis
+
+# needs image coding library
+
+##########################################################################
+# Parsing URLs
+
+(set parse-url
+  (proc (url)
+    (local (protocol host port document startpos curpos len)
+      (begin
+        (set protocol "http")
+        (set host "")
+        (set port 80)
+        (set document "/")
+        (set startpos 0)
+        (set curpos 0)
+        (set len (length url))
+        (while (and (< curpos len) (!= ':' (url curpos))) 
+          (set curpos (+ curpos 1)))
+        (set protocol (sublist startpos (- curpos 1) url))
+        (switch protocol
+          ("http"
+           (begin
+             (set startpos (+ curpos 1))
+             (while (and (< startpos len) (= '/' (url startpos))) 
+               (set startpos (+ startpos 1)))
+             (set curpos startpos)
+             (while (and (< curpos len) 
+                         (!= '/' (url curpos)) 
+                         (!= ':' (url curpos)))
+               (set curpos (+ curpos 1)))
+             (set host (sublist startpos (- curpos 1) url))
+             (set startpos curpos)
+             (if (< curpos len)
+                 (begin
+                   (if (= ':' (url curpos))
+                       (begin
+                         (set startpos (set curpos (+ curpos 1)))
+                         (while (and (< curpos len) (!= '/' (url curpos)))
+                           (set curpos (+ curpos 1)))
+                         (set port (eval (sublist startpos (- curpos 1) url)))
+                         (set startpos curpos)))
+                   (set document (sublist startpos (- len 1) url))))))
+          ("file"
+           (begin
+             (set startpos (+ curpos 1))
+             (set host Null)
+             (set port Null)
+             (set document (sublist startpos (- len 1) url)))))
+        [protocol host port document]))))
+
+##########################################################################
+# Query Strings
+
+(set query-string-structure
+  (proc (q)
+    (new-structure (parse-query-string q))))
+
+(set parse-query-string
+  (proc (q)
+    (local (ret startpos curpos len name value)
+      (begin
+        (set ret [])
+        (set startpos 0)
+        (set curpos 0)
+        (set len (if q (length q) 0))
+        (set name Null)
+        (set value Null)
+        (while (< curpos len)
+          (begin
+            (set startpos curpos)
+            (while (and (< curpos len) (!= (q curpos) '='))
+              (set curpos (+ curpos 1)))
+            (set name (convert-control-chars 
+                       (sublist startpos (- curpos 1) q)))
+            (set curpos (set startpos (+ curpos 1)))
+            (while (and (< curpos len) (!= (q curpos) '&'))
+              (set curpos (+ curpos 1)))
+            (set value (convert-control-chars
+                        (sublist startpos (- curpos 1) q)))
+            (set ret (tail-insert [name value] ret))
+            (set curpos (set startpos (+ curpos 1)))))
+        ret))))
+
+(set convert-control-chars
+  (proc (s)
+    (local (ret len curpos hex char)	  
+      (begin
+        (set ret [])
+        (set len (length s))
+        (set curpos 0)
+        (while (< curpos len)
+          (switch (s curpos)
+	    ('+' (begin (set ret (tail-insert ' ' ret))
+			(set curpos (+ curpos 1))))
+	    ('%' (begin (set hex (append "0x" (sublist (+ curpos 1) (+ curpos 2) s)))
+			(set char (character (eval hex)))
+			(set ret (tail-insert char ret))
+			(set curpos (+ curpos 3))))
+	    (else (begin 
+		    (set ret (tail-insert (s curpos) ret))
+		    (set curpos (+ curpos 1))))))
+        ret))))
+
+##########################################################################
+# Retrieving documents
+
+(set http-open
+  (proc (host port document)
+    (local (tcp)
+      (begin
+        (set tcp (tcp-open host port))
+        (if (!= tcp Null)
+            (begin
+              (write-string tcp "GET " document " HTTP/1.0\r\n\r\n")
+              tcp)
+	    (print "*** Unable to open " host ", port " port newline))))))
+
+(set remove-return
+  (proc (string)
+    (if (and string (= '\r' (tail string)))
+        (allbutlast 1 string)
+        string)))
+
+(set http-header
+  (proc (file)
+    (local (headers line)
+      (begin
+        (set headers [])
+        (set line Null)
+        (set line (remove-return (read-string file)))
+        (while (> (length line) 1) 
+          (begin
+            (cond 
+             ((= (first 8 line) "HTTP/1.0")
+              (set headers
+                (tail-insert [ "error-code" 
+                               (eval (allbutfirst 9 line)) ] 
+                             headers)))
+             ((or (= (first 15 line) "Content-Length:")
+                  (= (first 15 line) "Content-length:"))
+              (set headers
+                (tail-insert [ "content-length" 
+                               (eval (allbutfirst 16 line)) ] 
+                             headers)))
+             ((or (= (first 13 line) "Content-Type:")
+                  (= (first 13 line) "Content-type:"))
+              (set headers
+                (tail-insert [ "content-type" 
+                               (allbutfirst 14 line) ] 
+                             headers)))
+             ((= (first 5 line) "Date:")
+              (set headers
+                (tail-insert [ "date" 
+                               (allbutfirst 6 line) ] 
+                             headers)))
+             ((= (first 7 line) "Server:")
+              (set headers
+                (tail-insert [ "server" 
+                               (allbutfirst 8 line) ] 
+                             headers)))
+             ((= (first 13 line) "MIME-Version:")
+              (set headers
+                (tail-insert [ "mime-version" 
+                               (allbutfirst 14 line) ] 
+                             headers))))
+            (set line (remove-return (read-string file)))))
+        headers))))
+
+(set http-header-structure
+  (proc (file)
+    (new-structure (http-header file))))
+
+(set download-url-document
+  (proc (url outname)
+    (local (info protocol host port document infile outfile)
+      (begin
+        (set info (parse-url url))
+        (set protocol (info 0))
+        (set host (info 1))
+        (set port (info 2))
+        (set document (info 3))
+        (set infile Null)
+        (set outfile (open-output outname))
+        (switch protocol
+          ("http" (begin
+                    (set infile (http-open host port document))
+                    (set headers (http-header-structure infile))))
+          ("file" (set infile (open-input document)))
+          (else (print "*** download-url-document: Unknown protocol: " 
+                       protocol newline)))
+        (if (and infile outfile) (transfer-all-data infile outfile))
+        (close infile)
+        (close outfile)))))
+
+##########################################################################
+# Retrieving images from URL
+
+(set retrieve-url-image
+  (proc (url)
+    (local (images)
+      (begin
+        (set images (retrieve-url-image-sequence url))
+        (if images 
+            (begin
+              (map free-image (allbutfirst 1 images))
+              (images 0)))))))
+
+(set retrieve-url-image-sequence
+  (proc (url)
+    (local (info protocol host port document file headers
+                 content-type content-length images)
+      (begin
+        (set info (parse-url url))
+        (set protocol (info 0))
+        (set host (info 1))
+        (set port (info 2))
+        (set document (info 3))
+        (set file Null)
+        (set headers Null)
+        (set content-type Null)
+        (set content-length Null)
+        (set images Null)
+        (switch protocol
+          ("http" (begin
+                    (set file (http-open host port document))
+                    (set headers (http-header-structure file))
+                    (set content-type (headers "content-type"))
+                    (set content-length (headers "content-length"))))
+          ("file" (set file (open-input document)))
+          (else (print "*** retrieve-url-image-sequence: Unknown protocol: " 
+                       protocol newline)))
+        (if (and file (not content-type))
+            (cond
+             ((or (= (last 5 url) ".jpeg")
+                  (= (last 4 url) ".jpg")
+                  (= (last 5 url) ".JPEG")
+                  (= (last 4 url) ".JPG"))
+              (set content-type "image/jpeg"))
+             ((or (= (last 4 url) ".gif")
+                  (= (last 4 url) ".GIF"))
+              (set content-type "image/gif"))
+             (True (print "*** retrieve-url-image-sequence: " 
+                          "Could not determine image type." newline))))
+        (switch content-type
+          ("image/jpeg" (set images [ (read-jpeg file) ]))
+          ("image/gif" (if content-length
+                           (set images (read-gif file content-length))
+                           (set images (read-gif file))))
+          (else (print "*** Unable to retrieve image from " url newline)))
+        (close file)
+        images))))
+
+(set display-url-image
+  (proc (url)
+    (local (buf win)
+      (begin
+        (set buf (retrieve-url-image url))
+        (set win Null)
+        (if buf
+            (begin
+              (set win (easywin-create buf url))
+              [win buf]))))))
+
+(set display-url-image-sequence
+  (proc args
+    (local (url fper cycles bufs win numframes ct cyc)
+      (begin
+        (set url (args 0))
+        (set fper (if (> (length args) 1) (args 1) 0.25))
+        (set cycles (if (> (length args) 2) (args 2) 10))
+        (set bufs (retrieve-url-image-sequence url))
+        (set win Null)
+        (set numframes (length bufs))
+        (set ct 0)
+        (set cyc 0)
+        (if bufs
+            (begin
+              (set win (win-create [win-title url] 
+                                   [win-size ((bufs 0) buf-size)]))
+              (while (< cyc cycles)
+                (begin
+                  (win [win-put (bufs ct)] [win-output])
+                  (sleep fper)
+                  (set ct (+ ct 1))
+                  (if (= ct numframes) 
+                      (begin (set cyc (+ cyc 1)) 
+                             (set ct 0)))))
+              (win [win-close])
+              Null))))))
+

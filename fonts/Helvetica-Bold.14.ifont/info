@@ -1,0 +1,12 @@
+[ "imagefile" "images" ] 
+[ "widthfile" "widths" ] 
+[ "fontname" "Helvetica-Bold" ] 
+[ "fontheight" 14 ] 
+[ "boxsize" [ 32 32 ] ] 
+[ "startchar" 32 ] 
+[ "numchars" 96 ] 
+[ "pagesize" [ 256 128 ] ] 
+[ "spacewidth" 5.450292969 ] 
+[ "chans" 1 ] 
+[ "bits" 8 ] 
+

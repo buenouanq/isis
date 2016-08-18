@@ -1,0 +1,7 @@
+
+(set sport (tcp-open "satyricon" 1234))
+(write sport ["wad"])
+(set result (read sport))
+(print "Wad is located in room " result newline)
+(close sport)
+

@@ -1,0 +1,87 @@
+# Timer object -- by ann bui
+
+(set new-timer
+  (proc args
+    (local (base current)
+      (begin
+        (set base (if (length args) (args 0) (get-time)))
+        (set current [0 0])
+        (proc al
+          (switch (length al)
+            (0 (begin
+                 (set current (- (get-time) base))
+                 (+ (real (current 0))
+                    (/ (real (current 1)) 1000000.0))))
+            (1 (switch (al 0)
+                 ('g' (begin
+                        (set current (- (get-time) base))
+                        (+ (real (current 0))
+                           (/ (real (current 1)) 1000000.0))))
+                 ('s' (begin (set base (get-time)) 0.0))
+                 ('r' (begin (set base (get-time)) 0.0))
+                 ('z' base)))
+            (2 (switch (al 0)
+                 ('z' (set base (al 1)))))))))))
+
+(set print-frames-per-second
+  (proc (timer framecount)
+    (print (/ (real framecount) (timer)) "fps" newline)))
+
+
+# cross-machine timer synchronization:
+# these functions do it once
+
+(set master-sync-one
+  (proc (port)
+    (begin
+      (write port "go!")  # tell the slave to start
+      (read port)
+      (write port (get-time)))))
+
+(set slave-sync-one   # returns offset to ADD to master times to synchronize
+  (proc (port)
+    (local (send-time receive-time master-time)
+      (begin
+        (set send-time Null)
+        (set receive-time Null)
+        (set master-time Null)
+        (read port)       # wait for a kick from the master
+        (set send-time (get-time))
+        (write port 42)   # send message to master to get time
+        (set master-time (read port))
+        (set receive-time (get-time))
+        (- (- receive-time (/ (- receive-time send-time) [2 2]))
+           master-time)))))
+
+
+# cross-machine timer synchronization:
+# these functions do it N times and average the response.
+# usually 10 - 50 reps produces stable results.
+
+(set master-sync
+  (proc (port reps)
+    (local (ct)
+      (begin
+        (set ct 0)
+        (while (< ct reps)
+          (begin (master-sync-one port)
+                 (set ct (+ ct 1))))))))
+
+(set slave-sync        # returns offset to ADD to master times to synchronize
+  (proc (port reps)
+    (local (tot ct sec micsec)
+      (begin
+        (set tot [0.0 0.0])
+        (set ct 0)
+        (set sec 0.0)
+        (set micsec 0.0)
+        (while (< ct reps)
+          (begin
+            (set tot (+ tot (slave-sync-one port)))
+            (set ct (+ ct 1))))
+        (set sec (/ (tot 0) reps))
+        (set micsec (/ (tot 1) reps))
+        (set micsec (+ micsec (* 1000000.0 (- sec (integer sec)))))
+        (set sec (+ (integer sec) (/ micsec 1000000)))
+        (set micsec (% (integer micsec) 1000000))
+        [sec micsec]))))

@@ -1,0 +1,13 @@
+
+
+(set db (new-structure))                      # set up a database structure
+(set lport (tcp-listen 1234))                 # listen for connections
+
+(while True                                   # loop forever
+  (begin
+    (set client (tcp-accept lport))           # accept a client connection
+    (while (!= Null (set req (read client)))  # read requests from client, until Null
+      (switch (length req)                    # assume request was a list
+	(1 (write client (db (req 0))))       # query database
+	(2 (db (req 0) (req 1)))))            # modify database
+    (close client)))                          # close connection

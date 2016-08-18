@@ -1,0 +1,24 @@
+
+(print "Please enter your hair color: ")
+
+(set hair (read-string))
+
+(print "Please enter your sex: ")
+
+(set sex (read-string))
+
+(print "Please enter your shoe size: ")
+
+(set shoe (eval (read-string)))
+
+(cond 
+ ((and (= hair "brown") (= sex "male") (= shoe 10))
+  (print "Hi Wilbert." newline))
+ ((and (= sex "female") (= hair "blonde"))
+  (print "Please to meet you, maam." newline))
+ ((or (= hair "green") (> shoe 20) 
+      (and (!= sex "female") (!= sex "male")))
+  (print "Welcome to Earth." newline))
+ (True
+  (print "Your information has been recorded.  Goodbye." newline)))
+

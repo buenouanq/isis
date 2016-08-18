@@ -1,0 +1,235 @@
+# super infobox generator
+# stefan@media.mit.edu
+# this script is unfinished
+
+# pass a size and a list of elements.
+# elements should be a list of field-value pairs.
+# the "type" field must exist in all elements
+# all fields and their possible values or value types are listed below:
+
+# "type" : "box" "text" "url-image" "image"
+# "position"
+# "size" 
+# "color" 
+# "alpha"
+# "bordersize"
+# "bordercolor"
+# "borderalpha"
+# "text"
+# "font"
+# "fixed"
+# "charspacing"
+# "linespacing"
+# "imagebuf"
+# "alphabuf"
+# "url"
+# "align" : "center" "left" "right"
+# "valign" : "center" "top" "bottom"
+
+# the fields expected by each element type are listed below.
+# if a field is not included in an element, a default value is used:
+
+# "box"       : "position" "size" "color" "alpha" "bordersize" 
+#                 "bordercolor" "borderalpha" "align" "valign" 
+# "text"      : "position" "text" "font" "color" "alpha" "align" "valign"
+#                 "charspacing" "linespacing" "fixed"
+# "url-image" : "position" "url" "alpha" "align" "valign"
+# "image"     : "position" "imagebuf" "alphabuf" "align" "valign"
+
+(set create-info-box
+  (proc (size elist)
+    (local (outrgb outalpha tempwhite min def
+                   composite-element)
+      (begin
+        (set outrgb (new-standard-image 3 size))
+        (set outalpha (new-standard-image 1 size))
+        (set tempwhite (new-standard-image 1 size))
+        (set min (proc (x y) (if (< x y) x y)))
+        (set def (proc (x y) (if (!= x Null) x y)))
+        (set composite-element (proc (pos inrgb inalpha halign valign)
+                                 (local (origsize compsize maxsize subinrgb subinalpha
+                                                  suboutrgb suboutalpha subwhite)
+                                   (begin
+                                     (set origsize (inrgb buf-dims))
+                                     (set offset [ (switch halign
+                                                     ("center" (/ (origsize 0) 2))
+                                                     ("right" (- (origsize 0) 1))
+                                                     (else 0))
+                                                   (switch valign
+                                                     ("center" (/ (origsize 1) 2))
+                                                     ("bottom" (- (origsize 1) 1))
+                                                     (else 0)) ])
+                                     (set pos (- pos offset))
+                                     (set maxsize (- size pos))
+                                     (set compsize (map min origsize maxsize))
+                                     (set subinrgb (isolate-sub-image [0 0] compsize inrgb))
+                                     (set subinalpha (isolate-sub-image [0 0] compsize inalpha))
+                                     (set suboutrgb (isolate-sub-image pos compsize outrgb))
+                                     (set suboutalpha (isolate-sub-image pos compsize outalpha))
+                                     (set subwhite (isolate-sub-image [0 0] compsize tempwhite))
+                                     (image-composite subinrgb subinalpha suboutrgb)
+                                     (image-composite subwhite subinalpha suboutalpha)))))
+        (image-fill-constant 0 outrgb)
+        (image-fill-constant 0 outalpha)
+        (image-fill-constant 255 tempwhite)
+        (map (proc (element)
+               (begin
+                 (set element (new-structure element))
+                 (switch (element "type")
+                   ("box" (local (boxpos boxsize boxcolor boxalpha bordersize
+                                         bordercolor borderalpha halign valign temprgb
+                                         tempalpha subrgb subalpha)
+                            (begin
+                              (set boxpos (def (element "position") [0 0]))
+                              (set boxsize (def (element "size") [100 100]))
+                              (set boxcolor (def (element "color") [128 128 128]))
+                              (set boxalpha (def (element "alpha") 255))
+                              (set bordersize (def (element "bordersize") 0))
+                              (set bordercolor (def (element "bordercolor") [255 255 255]))
+                              (set borderalpha (def (element "borderalpha") 255))
+                              (set halign (def (element "align") "left"))
+                              (set valign (def (element "valign") "top"))
+                              (set temprgb (new-standard-image 3 boxsize))
+                              (set tempalpha (new-standard-image 1 boxsize))
+                              (if bordersize
+                                  (begin
+                                    (image-fill-constant (bordercolor 0) 
+                                                         (isolate-channel 0 temprgb))
+                                    (image-fill-constant (bordercolor 1) 
+                                                         (isolate-channel 1 temprgb))
+                                    (image-fill-constant (bordercolor 2) 
+                                                         (isolate-channel 2 temprgb))
+                                    (image-fill-constant borderalpha tempalpha)))
+                              (set subrgb 
+                                (isolate-sub-image [bordersize bordersize]
+                                                   (- boxsize (* [2 2] [bordersize bordersize]))
+                                                   temprgb))
+                              (set subalpha 
+                                (isolate-sub-image [bordersize bordersize]
+                                                   (- boxsize (* [2 2] [bordersize bordersize]))
+                                                   tempalpha))
+                              (image-fill-constant (boxcolor 0) (isolate-channel 0 subrgb))
+                              (image-fill-constant (boxcolor 1) (isolate-channel 1 subrgb))
+                              (image-fill-constant (boxcolor 2) (isolate-channel 2 subrgb))
+                              (image-fill-constant boxalpha subalpha)
+                              (composite-element boxpos temprgb tempalpha halign valign)
+                              (free-image temprgb)
+                              (free-image tempalpha))))
+                   ("text" (local (pos text font color alpha fixed charspacing
+                                       linespacing halign valign boxsize temprgb
+                                       tempalpha)
+                             (begin
+                               (set pos (def (element "position") [0 0]))
+                               (set text (def (element "text") "Text"))
+                               (set font (element "font"))
+                               (set color (def (element "color") [255 255 255]))
+                               (set alpha (def (element "alpha") 255))
+                               (set fixed (def (element "fixed") False))
+                               (set charspacing (def (element "charspacing") 1.0))
+                               (set linespacing (def (element "linespacing") 1.0))
+                               (set halign (def (element "align") "left"))
+                               (set valign (def (element "valign") "top"))
+                               (set boxsize Null)
+                               (set temprgb Null)
+                               (set tempalpha Null)
+                               (set boxsize (imagefont-measure text font fixed charspacing linespacing))
+                               (set tempalpha (new-standard-image 1 boxsize))
+                               (image-fill-constant 0 tempalpha)
+                               (imagefont-draw text font fixed charspacing linespacing [0 0] tempalpha)
+                               (set temprgb (new-standard-image 3 boxsize))
+                               (image-fill-constant (color 0) (isolate-channel 0 temprgb))
+                               (image-fill-constant (color 1) (isolate-channel 1 temprgb))
+                               (image-fill-constant (color 2) (isolate-channel 2 temprgb))
+                               (if (!= alpha 255) 
+                                   (image-gainbias (/ (real alpha) 255.0) 0.0 tempalpha tempalpha))
+                               (composite-element pos temprgb tempalpha halign valign)
+                               (free-image temprgb)
+                               (free-image tempalpha))))
+                   ("url-image" (local (pos url alpha halign valign tempimage boxsize
+                                            chans temprgb tempalpha)
+                                  (begin
+                                    (set pos (def (element "position") [0 0]))
+                                    (set url (element "url"))
+                                    (set alpha (def (element "alpha") 255))
+                                    (set halign (def (element "align") "left"))
+                                    (set valign (def (element "valign") "top"))
+                                    (set tempimage (retrieve-url-image url))
+                                    (set boxsize Null)
+                                    (set chans Null)
+                                    (set temprgb Null)
+                                    (set tempalpha Null)
+                                    (if tempimage
+                                        (begin
+                                          (set boxsize (tempimage buf-dims))
+                                          (set chans (tempimage buf-chans))
+                                          (switch chans
+                                            (1 (begin 
+                                                 (set temprgb 
+                                                   (combine-channels tempimage tempimage tempimage))
+                                                 (set tempalpha 
+                                                   (image-fill-constant 255 (new-standard-image 1 boxsize)))))
+                                            (2 (begin 
+                                                 (set temprgb 
+                                                   (combine-channels (isolate-channel 0 tempimage) 
+                                                                     (isolate-channel 0 tempimage) 
+                                                                     (isolate-channel 0 tempimage)))
+                                                 (set tempalpha (isolate-channel 1 tempimage))))
+                                            (3 (begin 
+                                                 (set temprgb tempimage)
+                                                 (set tempalpha 
+                                                   (image-fill-constant 255 (new-standard-image 1 boxsize)))))
+                                            (4 (begin 
+                                                 (set temprgb (isolate-channels 0 2 tempimage))
+                                                 (set tempalpha (isolate-channel 3 tempimage)))))
+                                          (if (!= alpha 255) 
+                                              (image-gainbias (/ (real alpha) 255.0) 
+                                                              0.0 tempalpha tempalpha))
+                                          (composite-element pos temprgb tempalpha halign valign)
+                                          (free-image tempimage)
+                                          (if (or (= chans 1) (= chans 3)) (free-image tempalpha)))
+                                        (print "Could not retrieve: " url newline)))))
+                   ("image" (local (pos tempimage inalpha halign valign tempalpha
+                                        boxsize chans)
+                              (begin
+                                (set pos (def (element "position") [0 0]))
+                                (set tempimage (element "imagebuf"))
+                                (set inalpha (element "alphabuf"))
+                                (set halign (def (element "align") "left"))
+                                (set valign (def (element "valign") "top"))
+                                (set tempalpha Null)
+                                (set boxsize Null)
+                                (set chans Null)
+                                (if tempimage
+                                    (begin
+                                      (set boxsize (tempimage buf-dims))
+                                      (set chans (tempimage buf-chans))
+                                      (switch chans
+                                        (1 (begin 
+                                             (set temprgb 
+                                               (combine-channels tempimage tempimage tempimage))
+                                             (set tempalpha Null)))
+                                        (2 (begin 
+                                             (set temprgb 
+                                               (combine-channels (isolate-channel 0 tempimage) 
+                                                                 (isolate-channel 0 tempimage) 
+                                                                 (isolate-channel 0 tempimage)))
+                                             (set tempalpha (isolate-channel 1 tempimage))))
+                                        (3 (begin 
+                                             (set temprgb tempimage)
+                                             (set tempalpha Null)))
+                                        (4 (begin 
+                                             (set temprgb (isolate-channels 0 2 tempimage))
+                                             (set tempalpha (isolate-channel 3 tempimage)))))
+                                      (if inalpha
+                                          (set tempalpha inalpha)
+                                          (if (not tempalpha) 
+                                              (set tempalpha 
+                                                (image-fill-constant 255 (new-standard-image 1 boxsize)))))
+                                      (composite-element pos temprgb tempalpha halign valign)
+                                      (if (not inalpha) (free-image tempalpha)))))))
+                   (else (print "Invalid element type: " (element "type") newline)))))
+             elist)
+        (free-image tempwhite)
+        # (set xwin (xwin-create Null Null Null (outrgb buf-dims)))
+        # (xwin-display-image xwin outrgb)
+        [outrgb outalpha]))))

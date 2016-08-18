@@ -1,0 +1,249 @@
+# video for linux 2 utilities
+# stefan agamanolis
+
+(set vcap-image
+  (proc (vc size pixelformat addr)
+    (switch pixelformat
+      (vcap-bgr32 (new-image c-byte 3 size [4 (* (size 0) 4)]
+			     [ (+ addr 2) (+ addr 1) (+ addr 0) ]))
+      (vcap-rgb32 (new-image c-byte 3 size [4 (* (size 0) 4)]
+			     [ (+ addr 0) (+ addr 1) (+ addr 2) ]))
+      (vcap-bgr24 (new-image c-byte 3 size [3 (* (size 0) 3)]
+			     [ (+ addr 2) (+ addr 1) (+ addr 0) ]))
+      (vcap-rgb24 (new-image c-byte 3 size [3 (* (size 0) 3)]
+			     [ (+ addr 0) (+ addr 1) (+ addr 2) ]))
+      (vcap-grey (new-image c-byte 1 size [1 (size 0)] 
+			    [ (+ addr 0) ]))
+      (vcap-yuyv [ (new-image c-byte 1 size [2 (* (size 0) 2)] 
+			      [ (+ addr 0) ]) 
+		   (new-image c-byte 2 (/ size [2 1]) [4 (* (size 0) 2)] 
+			      [ (+ addr 1) (+ addr 3) ]) ])
+      (vcap-uyvy [ (new-image c-byte 1 size [2 (* (size 0) 2)] 
+			      [ (+ addr 1) ]) 
+		   (new-image c-byte 2 (/ size [2 1]) [4 (* (size 0) 2)] 
+			      [ (+ addr 0) (+ addr 2) ]) ])
+      (else (print "** vcap-image: Unknown pixelformat " pixelformat newline)))))
+
+# channel frequencies for IRC cable TV in the USA
+# for standard cable, change channel 5 and 6 to 77.25 and 83.25
+
+(set vcap-channel-to-frequency-irc
+  [ 0.0 0.0 55.25 61.25 67.25
+    79.25 85.25 175.25 181.25 187.25
+    193.25 199.25 205.25 211.25 121.2625
+    127.2625 133.2625 139.25 145.25 151.25
+    157.25 163.25 169.25 217.25 223.25
+    229.2625 235.2625 241.2625 247.2625 253.2625
+    259.2625 265.2625 271.2625 277.2625 283.2625
+    289.2526 295.2625 301.2625 307.2625 313.2625
+    319.2625 325.2625 331.2625 337.2625 343.2625
+    349.2625 355.2625 361.2625 367.2625 373.2625
+    379.2625 385.2625 391.2625 397.2625 403.25
+    409.25 415.25 421.25 427.25 433.25
+    439.25 445.25 451.25 457.25 463.25
+    469.25 475.25 481.25 487.25 493.25
+    499.25 505.25 511.25 517.25 523.25
+    529.25 535.25 541.25 547.25 553.25
+    559.25 565.25 571.25 577.25 583.25
+    589.25 595.25 601.25 607.25 613.25
+    619.25 625.25 631.25 637.25 643.25
+    91.25 97.25 103.25 109.275 115.275
+    649.25 655.25 661.25 667.25 673.25
+    679.25 685.25 691.25 697.25 703.25
+    709.25 715.25 721.25 727.25 733.25
+    739.25 745.25 ])
+
+(set vcap-live-video-opengl
+  (proc (devicename inputnum framesize standard fullscreen frequency)
+    (local (vc vport fieldmode format pixelformat rootwinsize rootwinpos rootwin
+	       texsize teximage diobj ditrans frameimage framemirror
+	       reshape keyboard scalefactor bufaddrs rgbimages fpstimer framecount
+	       muteinfo finfo curbuf)
+      (if (not (set vc (vcap-open (set vport (open-update devicename)))))
+	  (begin
+	    (print "*** Error initiating capture from " devicename newline)
+	    (close vport))
+	  
+	  (begin
+
+	    # set capture source and format
+
+	    (vcap-input vc inputnum)
+	    (if (not (vcap-standard vc standard))
+	    	(begin
+	    	  (print "Supported standards for input " inputnum ":" newline)
+		  (map (proc (x) (print x " ")) (vcap-standards vc inputnum))
+		  (print newline)))
+	    
+	    (set fieldmode (if (or (and (= standard "ntsc") (<= (framesize 1) 240))
+				   (and (!= standard "ntsc") (<= (framesize 1) 288)))
+			       vcap-field-top
+			       vcap-field-interlaced))
+	    (set format (vcap-format vc framesize vcap-bgr32 fieldmode))
+	    (set framesize (format 0))
+	    (set pixelformat (format 1))
+
+	    # OpenGL setup
+	    
+	    (load "macaroni.isis")
+	    (macaroni-initialize devicename)
+	    (set rootwinsize [640 (integer (* 640.0 (/ (real (framesize 1)) 
+						       (real (framesize 0)))))])
+	    (set rootwinpos [100 100])
+	    (set rootwin (macaroni-create-window (if fullscreen "notitle" devicename)
+						 rootwinsize rootwinpos True))
+	    (if fullscreen (glutFullScreen))
+	    
+	    # dynamic image macaroni object
+	    
+	    (set texsize (gl-find-texture-size framesize))
+	    (set teximage (gl-new-image 3 texsize))
+	    (image-fill-constant 128 teximage)
+	    (set diobj (mac-new-dynamic-image [mac-size (map real framesize)]
+					      [mac-position (map real (/ framesize [-2 -2]))]
+					      [mac-image teximage]
+					      [mac-interp True]
+					      [mac-texsize (map real texsize)]
+					      [mac-texposition (map real (/ framesize [-2 -2]))]))
+	    (set ditrans (mac-new-transform [mac-object diobj]))
+	    (free-image teximage)
+
+	    # transfer buffer for captured image
+	    
+	    (set frameimage (gl-new-image 3 framesize))
+	    (set framemirror (vertical-mirror-image frameimage))
+
+	    (set reshape
+	      (proc (w h)
+		(begin
+		  (glViewport 0 0 w h)
+		  (glMatrixMode GL_PROJECTION)
+		  (glLoadIdentity)
+		  (glOrtho 0.0 (real w) 0.0 (real h) -1.0 1.0)
+		  (glMatrixMode GL_MODELVIEW)
+		  (set rootwinsize [w h])
+		  (set scalefactor (/ (real (rootwinsize 0)) (* 1.0 (framesize 0))))
+		  (ditrans [mac-position (/ (map real rootwinsize) [2.0 2.0])]
+			  [mac-scale scalefactor]))))
+	    
+	    (set keyboard
+	      (proc (key x y)
+		(switch key
+		  (27 (begin
+			(vcap-stop vc)
+			(vcap-close vc)
+			(close vport)
+			(print "Exiting." newline newline)
+			(exit))))))
+	    
+	    (update-glut-callback-slot glut_reshape_slot reshape)
+	    (glutReshapeFunc glut_reshape)
+	    (update-glut-callback-slot glut_keyboard_slot keyboard)
+	    (glutKeyboardFunc glut_keyboard)
+	    
+	    # tune if necessary
+
+	    (if frequency
+		(begin
+		  (set muteinfo (vcap-find-control vc "Mute"))
+		  (vcap-control vc (muteinfo 0) 0)
+		  (vcap-tune vc inputnum (integer (/ (* frequency 1000.0) 62.5)))))
+	    
+	    # begin capture loop
+
+	    (set bufaddrs (vcap-start vc))
+	    (set rgbimages (map (proc (addr) (vcap-image vc framesize pixelformat addr)) bufaddrs))
+
+	    (print newline)
+	    (print "Image size " framesize newline)
+	    (print "Input source " devicename " input " inputnum newline)
+	    (print "Standard " standard newline)
+	    (if frequency (print "Frequency " frequency newline))
+	    (print "Capturing, press ESC to exit..." newline)
+	    (print newline)
+	    (set fpstimer (new-timer))
+	    (set framecount 0)
+
+	    (macaroni-start
+	     (proc ()
+	       (begin
+
+		 # wait for frame to come in
+		 (pending vport 1000000)
+
+		 # copy and display in SDL
+		 (set finfo (vcap-read vc))
+		 (set curbuf (finfo 0))
+		 
+		 # vertically mirror and transfer it into a GL format image buffer
+		 (image-transfer (rgbimages curbuf) framemirror)
+		 
+		 # transfer the GL image into the texture
+		 (diobj [mac-subimage frameimage [0 0]])
+		 
+		 # mark the window to be drawn
+		 (macaroni-update-window rootwin ditrans True)
+
+		 # requeue current image
+		 (vcap-queue vc)
+		 
+		 # print frames per second
+		 (if (= (set framecount (+ framecount 1)) 100) 
+		     (begin
+		       (print-frames-per-second fpstimer framecount)
+		       (fpstimer 'r')
+		       (set framecount 0))))))
+
+	    )))))
+
+(set vcap-live-video vcap-live-video-opengl)
+
+(set vcap-capture-still
+  (proc (filename quality devicename inputnum framesize standard)
+    (local (vc vport fieldmode format pixelformat bufbytes inbuf rgbimage outfile)
+      (if (not (set vc (vcap-open (set vport (open-update devicename)))))
+	  (begin
+	    (print "*** Error initiating capture from " devicename newline)
+	    (close vport))
+	  
+	  (begin
+
+	    # set capture source and format
+	    (vcap-input vc inputnum)
+	    (set fieldmode (if (or (and (= standard "ntsc") (<= (framesize 1) 240))
+				   (and (!= standard "ntsc") (<= (framesize 1) 288)))
+			       vcap-field-top
+			       vcap-field-interlaced))
+	    (set format (vcap-format vc framesize vcap-bgr32 fieldmode))
+	    (set framesize (format 0))
+	    (set pixelformat (format 1))
+
+	    (set bufbytes (* (framesize 0) (framesize 1) 4))
+	    (set inbuf (malloc bufbytes))
+	    (set rgbimage (vcap-image vc framesize pixelformat inbuf))
+	    
+	    # begin capture loop
+	    (print newline)
+	    (print "Quality " quality newline)
+	    (print "Image size " framesize newline)
+	    (print "Standard " standard newline)
+	    (print "Input source " devicename " input " inputnum newline)
+	    (print "Output filename " filename newline)
+	    (print newline)
+	    (print "Press enter to capture..." newline)
+	    (read-string)
+
+	    # read image
+	    (read-raw vport bufbytes inbuf)
+	    (if (set outfile (open-output filename))
+		(begin 
+		  (write-jpeg outfile rgbimage quality)
+		  (close outfile)
+		  (print "Image captured to " filename newline newline))
+		(begin
+		  (print "*** Could not open output file " outfile newline)))
+	    
+	    # close up	    
+	    (vcap-close vc)
+	    (close vport))))))
+

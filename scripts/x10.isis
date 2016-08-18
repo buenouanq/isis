@@ -1,0 +1,102 @@
+###########################################################################
+# x10 Library written by Christian Baekkelund (draco@mit.edu)
+# x10 Transmitter/Receiver (DIRECTLY CONNECTED TO A SERIAL PORT)
+# modified by stefan, aug 25 1999
+
+(set x10-readbuf (malloc 5))
+
+(set x10-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 x10-readbuf))))
+
+(set x10-flush-port-print
+  (proc (port)
+    (begin
+      (print "Flush port print: " newline)
+      (while (pending port) 
+	(begin
+	  (read-raw port 1 x10-readbuf)
+	  (print (x10-readbuf c-byte))))
+      (print newline))))
+
+(set x10-initialize  # open a connection to the x10 transmitting device
+  (proc (device-name)
+    (local (port)
+      (begin
+	(set port (open-update device-name))
+	(set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl tty-cstopb) 0 2400 2400)
+	(sleep 0.25)
+	(x10-flush-port port)
+        port))))
+
+(set x10-monitor  # infinitely monitor ALL x10 traffic
+  (proc (port)
+    (while True
+      (print "X10 monitor: " (read-string port) newline))))
+
+(set x10-send-single-command
+  (proc (port command)
+    (begin
+      (write-string port command return)
+      (read-string port))))
+
+(set x10-send
+  (proc (port commandstr)
+    (map (proc (c) (x10-send-single-command port c)) 
+	 (string-to-word-list commandstr))))
+
+(set x10-all-on  # turns all the lights for a particular house on
+  (proc (port house)
+    (x10-send-single-command port [ house 'L' '1' ])))
+ 
+(set x10-all-off  # turns all the lights for a particular house off
+  (proc (port house)
+    (x10-send-single-command port [ house 'A' '0' ])))
+
+(set x10-num-conv  # to be used internally by x10-on and x10-off
+  (proc (number)
+    (last 2 (head-insert '0' (uneval number)))))
+
+(set x10-select  # select certain units in a certain house
+  (proc (port house units) 
+    (begin
+      (if (list? units)
+	  (map (proc (x) (x10-send-single-command port (head-insert house (x10-num-conv x))))
+	       units)
+	  (x10-send-single-command port (head-insert house (x10-num-conv units)))))))
+
+(set x10-on  # turn on specific house and units
+  (proc (port house units)
+    (begin
+      (x10-select port house units)
+      (x10-send-single-command port [ house 'O' 'N' ]))))
+
+(set x10-off  # turn off specific house and units
+  (proc (port house units)
+    (begin
+      (x10-select port house units)
+      (x10-send-single-command port [ house 'O' 'F' ]))))
+
+(set x10-dim  # dim various units a certain number of steps
+  (proc (port house units steps)
+    (begin
+      (x10-send-single-command port (head-insert 'R' (x10-num-conv steps)))
+      (x10-select port house units)
+      (x10-send-single-command port [ house 'D' 'I' ]))))
+
+(set x10-bright  # bright various units a certain number of steps
+  (proc (port house units steps)
+    (begin
+      (x10-send-single-command port (head-insert 'R' (x10-num-conv steps)))
+      (x10-select port house units)
+      (x10-send-single-command port [ house 'B' 'R' ]))))
+
+(set x10-set  # sets a particular set of units to a particular stepvalue
+  (proc (port house units stepval)
+    (begin
+      (if (or (> stepval 20) (< stepval 0))
+	  (print "* Invalid step value: must be an integer from 0 to 20." newline)
+	  (begin
+	    (x10-off port house units)
+	    (x10-on port house units)
+	    (x10-dim port house units (- 20 stepval)))))))

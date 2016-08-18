@@ -1,0 +1,100 @@
+############################################################################
+# Macaroni TEXTDEMO
+# Displays pieces of text on and off, like a neon beer sign
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Textdemo")
+(set macwin (macaroni-create-window "Textdemo" [300 300] [100 100] True))
+
+############################################################################
+# Load font
+
+(set helvetica-56-font (gl-load-font "Helvetica" 56))
+
+############################################################################
+# Create Macaroni text and transform objects
+
+(set t1obj (mac-new-text [mac-text "Just say"]
+                         [mac-font helvetica-56-font]))
+(set t2obj (mac-new-text [mac-text "NO"]
+                         [mac-font helvetica-56-font]))
+(set t3obj (mac-new-text [mac-text "to demos"]
+                         [mac-font helvetica-56-font]))
+
+(set t1trans (mac-new-transform [mac-object t1obj]
+                                [mac-position [150.0 225.0]]
+                                [mac-color [1.0 1.0 0.0 1.0]]
+                                [mac-scale [1.0 1.0]]
+                                [mac-rotation 0.0]))
+(set t2trans (mac-new-transform [mac-object t2obj]
+                                [mac-position [150.0 150.0]]
+                                [mac-color [1.0 1.0 0.0 1.0]]
+                                [mac-scale [1.0 1.0]]
+                                [mac-rotation 0.0]))
+(set t3trans (mac-new-transform [mac-object t3obj]
+                                [mac-position [150.0 75.0]]
+                                [mac-color [1.0 1.0 0.0 1.0]]
+                                [mac-scale [1.0 1.0]]
+                                [mac-rotation 0.0]))
+
+
+############################################################################
+# Create a Macaroni scene containing all the objects
+
+(set scene (mac-new-scene [mac-objects [t1trans t2trans t3trans]]))
+
+##########################################################################
+# Define timelines to control each object's color over time
+
+(set c1tl (new-timeline))
+(c1tl 0.0 [0.8 0.7 0.0 1.0])
+(c1tl 1.0 [0.8 0.7 0.0 0.0])
+(c1tl 2.0 [0.8 0.7 0.0 0.0])
+(c1tl 3.0 [0.8 0.7 0.0 0.0])
+(c1tl 3.5 [0.8 0.7 0.0 1.0])
+(c1tl 4.5 [0.8 0.7 0.0 0.0])
+(c1tl 5.0 [0.8 0.7 0.0 1.0])
+(c1tl 6.0 [0.8 0.7 0.0 0.0])
+(c1tl 'w' 6.5)
+
+(set c2tl (new-timeline))
+(c2tl 0.0 [1.0 1.0 0.0 0.0])
+(c2tl 1.0 [1.0 1.0 0.0 1.0])
+(c2tl 2.0 [1.0 1.0 0.0 0.0])
+(c2tl 3.0 [1.0 1.0 0.0 0.0])
+(c2tl 3.5 [1.0 1.0 0.0 1.0])
+(c2tl 4.5 [1.0 1.0 0.0 1.0])
+(c2tl 5.0 [1.0 1.0 0.0 1.0])
+(c2tl 6.0 [1.0 1.0 0.0 0.0])
+(c2tl 'w' 6.5)
+
+(set c3tl (new-timeline))
+(c3tl 0.0 [0.8 0.7 0.0 0.0])
+(c3tl 1.0 [0.8 0.7 0.0 0.0])
+(c3tl 2.0 [0.8 0.7 0.0 1.0])
+(c3tl 3.0 [0.8 0.7 0.0 0.0])
+(c3tl 3.5 [0.8 0.7 0.0 1.0])
+(c3tl 4.5 [0.8 0.7 0.0 0.0])
+(c3tl 5.0 [0.8 0.7 0.0 1.0])
+(c3tl 6.0 [0.8 0.7 0.0 0.0])
+(c3tl 'w' 6.5)
+
+
+############################################################################
+# Start looping, updating object attributes each pass 
+# by indexing into the timelines with the current time
+
+(set timer (new-timer))
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (set thetime (timer))
+     (t1trans [mac-color (c1tl thetime)])
+     (t2trans [mac-color (c2tl thetime)])
+     (t3trans [mac-color (c3tl thetime)])
+     (macaroni-update-window macwin scene True))))

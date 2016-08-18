@@ -1,0 +1,12 @@
+[ "imagefile" "images" ] 
+[ "widthfile" "widths" ] 
+[ "fontname" "Times" ] 
+[ "fontheight" 18 ] 
+[ "boxsize" [ 32 32 ] ] 
+[ "startchar" 32 ] 
+[ "numchars" 96 ] 
+[ "pagesize" [ 256 128 ] ] 
+[ "spacewidth" 6.3 ] 
+[ "chans" 1 ] 
+[ "bits" 8 ] 
+

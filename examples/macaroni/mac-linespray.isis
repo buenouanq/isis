@@ -1,0 +1,42 @@
+############################################################################
+# Macaroni LINESPRAY
+# Creates an expanding spray of lines, like a fire cracker
+
+(load "macaroni.isis")
+
+############################################################################
+# Initialize Macaroni and create window
+
+(macaroni-initialize "Linespray")
+(set macwin (macaroni-create-window "Linespray" [300 300] [100 100] True))
+
+############################################################################
+# Build list of lines
+
+(set numlines 36)
+(set angles (map degrad (make-series 0.0 numlines 10.0)))
+(set lines (map (proc (a) [ [ (cos a) (sin a) ]
+                            [ (* 2.0 (cos a)) (* 2.0 (sin a)) ] ])
+                angles))
+
+############################################################################
+# Create lines object and transform object
+
+(set lobj (mac-new-lines [mac-lines lines]))
+(set ltrans (mac-new-transform [mac-object lobj]
+                               [mac-position [150.0 150.0]]
+                               [mac-line-width 2.0]
+                               [mac-color [0.8 0.6 0.3 1.0]]))
+
+############################################################################
+# Start rendering, incrementing the scale each pass
+
+(set scale 1.0)
+
+(macaroni-start 
+ (proc ()
+   (begin
+     (ltrans [mac-scale [scale scale]])
+     (set scale (+ scale 1.0))
+     (if (> scale 200.0) (set scale 1.0))
+     (macaroni-update-window macwin ltrans True))))

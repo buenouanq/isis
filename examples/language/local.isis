@@ -1,0 +1,14 @@
+
+(set x 3)
+(set y 7)
+(set z 32)
+
+(local (y z)
+  (begin
+    (set y 100)
+    (set z 200)
+    (print "Inside the local statement: " (+ x y z) newline)))
+
+(print "Outside the local statement: " (+ x y z) newline)
+
+

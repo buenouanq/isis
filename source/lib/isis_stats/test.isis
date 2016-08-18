@@ -1,0 +1,58 @@
+# test.isis
+
+(load "/system/isis/4.0/scripts/stats-helpers.isis")
+(load "/mas/garden/grad/wad/color_exp1/isis/wad-helpers.isis")
+
+(set in-fname "test-image")
+(set infile (input-image-datfile in-fname))
+
+(print (append "Statistics of: " in-fname "\n" ))
+(if (= infile Null)
+    (begin
+      (print "Unable to open one or more image file(s)" )
+      (exit)))
+(set in-frame (infile))
+
+(my-image-info in-frame)
+
+# (print "This image is of type ")
+# (switch ((in-frame buf-type) buf-type-sample)
+#        (buf-type-sample-byte (print "byte"))
+#        (buf-type-sample-short (print "short"))
+#        (buf-type-sample-int (print "integer"))
+#        (buf-type-sample-float (print "float"))
+#        (buf-type-sample-double (print "double")))
+# (print ", of which it has ")
+# (display (apply * (in-frame buf-dims)))
+
+(set max (image-stats-max in-frame))
+(print "Max: ")
+(display max)
+
+(set mean (image-stats-mean in-frame))
+(print "Mean: ")
+(display mean)
+
+(set min (image-stats-min in-frame))
+(print "Min: ")
+(display min)
+
+(set sum (image-stats-sum in-frame))
+(print "Sum: ")
+(display sum)
+
+(set energy (image-stats-energy in-frame))
+(print "Energy: ")
+(display energy)
+
+(set variance (image-stats-variance in-frame))
+(print "Variance: ")
+(display variance)
+
+(set hist (image-stats-2D-hist (extract-channel 0 in-frame)
+			       64 0.0 255.0
+			       (extract-channel 1 in-frame)
+			       64 0.0 255.0
+			       1))
+(image-check hist "test-image.hist")
+

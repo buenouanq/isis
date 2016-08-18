@@ -1,0 +1,388 @@
+############################################################################
+# Port utilities
+# stefan agamanolis
+
+############################################################################
+# load function
+# accepts file names, or urls!
+
+(set load-path-list [])
+
+(set load
+  (proc (name)
+    (if (not (string? name))
+	(print "** load: filename was not a string." newline)
+	(local (lplen pathnum items path)
+	  (if (or (= (first 5 name) "file:")
+		  (= (first 5 name) "http:"))
+	      (interpret-url name)
+	      (begin
+		(set lplen (length load-path-list))
+		(set pathnum 0)
+		(set items (interpret-file name))
+		# (print name newline)
+		(if (!= (name 0) '/')
+		    (while (and (= Null items) (< pathnum lplen))
+		      (begin 
+			(set path (load-path-list pathnum))
+			(set items 
+			  (interpret-file (append (load-path-list pathnum)
+						  (if (!= (tail path) '/') "/" "")
+						  name)))
+			(set pathnum (+ pathnum 1)))))
+		(if (= items Null) (print "** load: file not found: " name newline))
+		items))))))
+  
+(set load-compiled
+  (proc (name)
+    (if (not (string? name))
+	(print "** load-compiled: filename was not a string." newline)
+	(local (lplen pathnum items path)
+	  (if (or (= (first 5 name) "file:")
+		  (= (first 5 name) "http:"))
+	      (interpret-compiled-url name)
+	      (begin
+		(set lplen (length load-path-list))
+		(set pathnum 0)
+		(set items (interpret-compiled-file name))
+		# (print name newline)
+		(if (!= (name 0) '/')
+		    (while (and (= Null items) (< pathnum lplen))
+		      (begin 
+			(set path (load-path-list pathnum))
+			(set items 
+			  (interpret-compiled-file (append (load-path-list pathnum)
+							   (if (!= (tail path) '/') "/" "")
+							   name)))
+			(set pathnum (+ pathnum 1)))))
+		(if (= items Null) (print "** load-compiled: file not found: " name newline))
+		items))))))
+
+(set add-load-path
+  (proc paths
+    (set load-path-list (append load-path-list paths))))
+
+############################################################################
+# interpretation routines
+
+(set interpret-file
+  (proc (filename)
+    (local (port items)
+      (if (set port (open-input filename))
+	  (begin
+	    (set items (interpret-port port))
+	    (close port)
+	    items)))))
+    
+(set interpret-compiled-file
+  (proc (filename)
+    (local (port items)
+      (if (set port (open-input filename))
+	  (begin
+	    (set items (interpret-compiled-port port))
+	    (close port)
+	    items)))))
+    
+(set interpret-url
+  (proc (url)
+    (local (info protocol host portnum document)
+      (begin
+        (set info (parse-url url))
+        (set protocol (info 0))
+        (set host (info 1))
+        (set portnum (info 2))
+        (set document (info 3))
+	(switch protocol
+	  ("http" (interpret-http host portnum document))
+	  ("file" (interpret-file document)))))))
+
+(set interpret-compiled-url
+  (proc (url)
+    (local (info protocol host portnum document)
+      (begin
+        (set info (parse-url url))
+        (set protocol (info 0))
+        (set host (info 1))
+        (set portnum (info 2))
+        (set document (info 3))
+	(switch protocol
+	  ("http" (interpret-compiled-http host portnum document))
+	  ("file" (interpret-compiled-file document)))))))
+
+(set interpret-http
+  (proc (host portnum document)
+    (local (port headers items)
+      (begin
+	(if (set port (http-open host portnum document))
+	    (begin
+	      (set headers (http-header-structure port))
+	      (set items (interpret-port port))
+	      (close port)
+	      items))))))
+
+(set interpret-compiled-http
+  (proc (host portnum document)
+    (local (port headers items)
+      (begin
+	(if (set port (http-open host portnum document))
+	    (begin
+	      (set headers (http-header-structure port))
+	      (set items (interpret-compiled-port port))
+	      (close port)
+	      items))))))
+
+(set compile-file
+  (proc (infilename outfilename)
+    (local (inport outport items)
+      (begin
+	(if (not (set inport (open-input infilename)))
+	    (print "*** compile-file: Unable to open " infilename newline))
+	(if (not (set outport (open-output outfilename)))
+	    (print "*** compile-file: Unable to open " outfilename newline))
+	(if (and inport outport) 
+	    (set items (compile-port inport outport)))
+	(if inport (close inport))
+	(if outport (close outport))
+	items))))
+
+(set interpret-string
+  (proc (str)
+    (local (port items)
+      (begin
+	(set port (new-string-port "string" str))
+	(set items (interpret-port port))
+	(close port)
+	items))))
+
+(set interpret-compiled-string
+  (proc (str)
+    (local (port items)
+      (begin
+	(set port (new-string-port "string" str))
+	(set items (interpret-compiled-port port))
+	(close port)
+	items))))
+
+############################################################################
+# string and memory ports
+
+(set new-string-port
+  (proc (name str)
+    (local (buflen membuf)
+      (begin
+	(set buflen (length str))
+	(set membuf (malloc buflen))
+	(membuf [c-byte buflen] str)
+	(new-memory-port name buflen membuf True)))))
+
+(set new-memory-port
+  (proc (name buflen membuf freeflag)
+    (local (bufpos)
+      (begin
+	(set bufpos 0)
+	(new-port name "MEMORY" [ buflen membuf freeflag ] True True
+		  # close function
+		  (proc (id) 
+		    (begin 
+		      (if freeflag (free membuf)) 
+		      True))
+		  # read function
+		  (proc (id size ptr)
+		    (local (readsize)
+		      (begin
+			(set readsize (min size (- buflen bufpos)))
+			(if readsize (copy-memory readsize (+ membuf bufpos) ptr))
+			(set bufpos (+ bufpos readsize))
+			readsize)))
+		  # readline function
+		  (proc (id size ptr endval)
+		    (local (readsize val going)
+		      (begin
+			(set readsize 0)
+			(set going True)
+			(while (and (< bufpos buflen) going)
+			  (begin
+			    (set val ((+ membuf bufpos) c-byte))
+			    ((+ ptr readsize) c-byte val)
+			    (set readsize (+ readsize 1))
+			    (set bufpos (+ bufpos 1))
+			    (if (= val endval) (set going False))))
+			readsize)))
+		  # write function
+		  (proc (id size ptr)
+		    (local (writesize)
+		      (begin
+			(set writesize (min size (- buflen bufpos)))
+			(if writesize (copy-memory writesize ptr (+ membuf bufpos)))
+			(set bufpos (+ bufpos writesize))
+			writesize)))
+		  # tell function
+		  (proc (id) bufpos)
+		  # seek function
+		  (proc (id pos) (set bufpos pos))
+		  # read-ready function
+		  (proc (id time) (not (= bufpos buflen)))
+		  # write-ready function
+		  (proc (id time) (= bufpos buflen))
+		  # configure function
+		  (proc args Null) )))))
+
+
+############################################################################
+# various utilities
+
+(set copy-file
+  (proc (inname outname)
+    (local (infile outfile result)
+      (begin
+        (set infile (open-input inname))
+        (set outfile (open-output outname))
+        (if (set result (and infile outfile)) 
+	    (transfer-all-data infile outfile))
+        (if infile (close infile))
+        (if outfile (close outfile))
+	result))))
+
+(set read-text
+  (proc (file len)
+    (local (bufinfo buf text)
+      (begin
+        (set bufinfo (read-data file len))
+	(set buf (bufinfo 0))
+	(set len (bufinfo 1))
+        (set text (if (and buf len) (buf [c-char len])))
+        (if buf (free buf))
+        text))))
+
+(set read-all-text
+  (proc (file)
+    (local (bufinfo buf len text)
+      (begin
+        (set bufinfo (read-all-data file))
+        (set buf (bufinfo 0))
+        (set len (bufinfo 1))
+        (set text (if (and buf len) (buf [c-char len])))
+        (if buf (free buf))
+        text))))
+
+(set read-data
+  (proc (file len)
+    (local (buf)
+      (begin
+        (set buf (malloc len))
+        (set len (read-raw file len buf))
+        [buf len]))))
+
+(set read-all-data
+  (proc (file)
+    (local (bufs lens buf len pos thisbuf thislen going)
+      (begin
+        (set bufs [])
+        (set lens [])
+        (set buf Null)
+        (set len 0)
+        (set pos 0)
+        (set thisbuf Null)
+        (set thislen 0)
+        (set going True)
+        (while going
+          (begin
+            (set thisbuf (malloc 8192))
+            (set thislen (read-raw file 8192 thisbuf))
+            (if thislen
+                (begin
+                  (set bufs (tail-insert thisbuf bufs))
+                  (set lens (tail-insert thislen lens))
+                  (set len (+ len thislen)))
+                (begin
+		  (free thisbuf)
+		  (set going False)))))
+        (if len (set buf (malloc len)))
+        (map (proc (l b) (begin
+                           (copy-memory l b (+ buf pos))
+                           (set pos (+ pos l))))
+             lens bufs)
+        (map (proc (b) (free b)) bufs)
+        [buf len]))))
+
+(set read-unknown-length-text read-all-text)
+(set read-unknown-length-data read-all-data)
+
+(set transfer-data
+  (proc (infile outfile origlen)
+    (local (len transbuf numbytes)
+      (begin
+        (set len origlen)
+        (set transbuf (malloc 8192))
+        (set numbytes 1)
+        (while (and numbytes len)
+          (begin
+            (set numbytes 
+              (read-raw infile (if (> len 8192) 8192 len) transbuf))
+            (set len (- len numbytes))
+            (write-raw outfile numbytes transbuf)))
+        (free transbuf)
+        (- origlen len)))))  # return num bytes actually transferred
+
+(set transfer-all-data
+  (proc (infile outfile)
+    (local (len transbuf numbytes)
+      (begin
+        (set transbuf (malloc 8192))
+        (set numbytes 0)
+	(set len 0)
+        (while (set numbytes (read-raw infile 8192 transbuf))
+	  (set len (+ len (write-raw outfile numbytes transbuf))))
+        (free transbuf)
+        len))))
+
+############################################################################
+# multiserver
+
+# This object handles connections from multiple tcp sockets
+# when called with no arguments, a list of messages is returned.
+# each message is a list of 2 items: [originating-port message]
+
+(set create-multiserver
+  (proc (portnum) 
+    (local (serv ports msgs gotone msg)
+      (begin
+	(set serv (tcp-listen portnum))
+	(set ports [])
+	(proc args
+	  (if (= (length args) 0)
+	      (begin
+		
+		(while (pending serv)    # accept new connections
+		  (begin
+		    (print "Connection established." newline)
+		    (set ports (tail-insert (tcp-accept serv) ports))))
+		
+		(set msgs [])            
+		(set gotone True)
+		(while gotone            # read messages
+		  (begin
+		    (set gotone False)
+		    (map (proc (p)
+			   (if (pending p)
+			       (if (= Null (set msg (read p)))
+				   (begin 
+				     (close p)
+				     (print "Connection released." newline)
+				     (set ports (remove p ports)))
+				   (begin
+				     (set msgs (tail-insert [p msg] msgs))
+				     (set gotone True)))))
+			 ports)))
+		
+		msgs)                    # return list of messages
+
+	      (switch (args 0)
+		("wait" (begin (multipending ports (args 1)) Null))
+		("count" (length ports))
+		("add" (set ports (tail-insert (args 1) ports)))
+		(True (print "*** Unknown command on multiserver." newline)))
+	      
+	      ))))))
+
+		   

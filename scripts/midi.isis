@@ -1,0 +1,137 @@
+### isis midi interface routines
+### written by stefan agamanolis
+
+# these routines use the serial port to transmit midi information.  you
+# should interface your serial port in the appropriate manner to the midi
+# input and output on your midi device before using these routines.
+
+# not able to handle running status yet.
+
+(set midi-msgbuf-len 96)
+(set midi-msgbuf (malloc midi-msgbuf-len))
+
+(set status-byte midi-msgbuf)
+(set data-byte-1 (+ midi-msgbuf 1))
+(set data-byte-2 (+ midi-msgbuf 2))
+
+(set midi-flush-port
+  (proc (port)
+    (while (pending port) (read-raw port 1 midi-msgbuf))))
+
+(set midi-flush-print
+  (proc (port)
+    (while (pending port) 
+      (begin
+        (read-raw port 1 midi-msgbuf)
+        (print (midi-msgbuf c-char))))))
+
+# call the following function to initialize the serial port and
+# get a file handle to send midi messages on
+
+(set midi-initialize
+  (proc args
+    (local (device-name baud port)
+      (begin
+        (set device-name (args 0))
+        (set baud (if (> (length args) 1) (args 1) tty-b9600))
+        (set port (open-update device-name))
+        (set-tty-mode port 0 0 (| tty-cs8 tty-cread tty-clocal tty-hupcl) 0
+                      baud baud)
+        (midi-flush-port port)
+        port))))
+
+(set midi-send-data
+  (proc (port numbytes buf)
+    (write-raw port numbytes buf)))
+
+(set midi-command-flag 128)
+(set midi-command-msg-mask (<< 15 4))
+(set midi-channel-mask 15)
+
+(set midi-note-off-msg (<< 8 4))
+(set midi-note-on-msg (<< 9 4))
+(set midi-note-pressure-msg (<< 10 4))
+(set midi-control-change-msg (<< 11 4))
+(set midi-program-change-msg (<< 12 4))
+(set midi-channel-pressure-msg (<< 13 4))
+(set midi-pitch-wheel-msg (<< 14 4))
+(set midi-system-msg (<< 15 4))
+
+(set midi-note-off
+  (proc (port midichan note vel)
+    (begin
+      (status-byte c-byte (+ midichan midi-note-off-msg))
+      (data-byte-1 c-byte note)
+      (data-byte-2 c-byte vel)
+      (write-raw port 3 midi-msgbuf))))
+
+(set midi-note-on
+  (proc (port midichan note vel)
+    (begin
+      (status-byte c-byte (+ midichan midi-note-on-msg))
+      (data-byte-1 c-byte note)
+      (data-byte-2 c-byte vel)
+      (write-raw port 3 midi-msgbuf))))
+
+(set midi-note-pressure
+  (proc (port midichan note pres)
+    (begin
+      (status-byte c-byte (+ midichan midi-note-pressure-msg))
+      (data-byte-1 c-byte note)
+      (data-byte-2 c-byte pres)
+      (write-raw port 3 midi-msgbuf))))
+
+(set midi-control-change
+  (proc (port midichan cnum val)
+    (begin
+      (status-byte c-byte (+ midichan midi-control-change-msg))
+      (data-byte-1 c-byte cnum)
+      (data-byte-2 c-byte val)
+      (write-raw port 3 midi-msgbuf))))
+
+(set midi-program-change
+  (proc (port midichan pnum)
+    (begin
+      (status-byte c-byte (+ midichan midi-program-change-msg))
+      (data-byte-1 c-byte pnum)
+      (data-byte-2 c-byte 0)
+      (write-raw port 2 midi-msgbuf))))
+
+(set midi-channel-pressure
+  (proc (port midichan pres)
+    (begin
+      (status-byte c-byte (+ midichan midi-channel-pressure-msg))
+      (data-byte-1 c-byte pres)
+      (write-raw port 2 midi-msgbuf))))
+
+(set midi-pitch-wheel
+  (proc (port midichan lsb msb)
+    (begin
+      (status-byte c-byte (+ midichan midi-pitch-wheel-msg))
+      (data-byte-1 c-byte lsb)
+      (data-byte-2 c-byte msb)
+      (write-raw port 3 midi-msgbuf))))
+
+(set midi-read-raw
+  (proc (port len buf)
+    (read-raw port len buf)))
+
+(set midi-extract-channel
+  (proc (status)
+    (& status midi-channel-mask)))
+
+(set midi-extract-msgkind
+  (proc (status)
+    (& status midi-command-msg-mask)))
+
+(set midi-read-gesture-wall
+  (proc (midi)
+    (begin
+      (read-raw midi 17 midi-msgbuf)
+      (data-byte-1 [c-byte 16]))))
+
+(set midi-read-sonar
+  (proc (midi)
+    (begin
+      (read-raw midi 17 midi-msgbuf)
+      (data-byte-1 [c-byte 16]))))

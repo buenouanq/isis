@@ -1,0 +1,45 @@
+# Isis multi-directory Makefile rules
+# Stefan Agamanolis, January 1998
+# from template by Shawn Becker
+
+# The including Makefile defines the following:
+# SUBDIRS
+
+SHELL = /bin/sh
+
+all :
+	@for i in $(SUBDIRS); do \
+	  if [ -d $$i ]; then \
+	    cd $$i; \
+            if [ -s Makefile ]; then \
+	      echo "Making all in $$i..."; \
+	      make all; \
+            fi; \
+	    cd ..; \
+	  fi; \
+	done;
+
+clean :
+	@for i in $(SUBDIRS); do \
+	  if [ -d $$i ]; then \
+	    cd $$i; \
+            if [ -s Makefile ]; then \
+	      echo "Making clean in $$i..."; \
+	      make clean; \
+            fi; \
+	    cd ..; \
+	  fi; \
+	done;
+
+install :
+	@for i in $(SUBDIRS); do \
+	  if [ -d $$i ]; then \
+	    cd $$i; \
+            if [ -s Makefile ]; then \
+	      echo "Making install on $$i..."; \
+	      make install; \
+            fi; \
+	    cd ..; \
+	  fi; \
+	done;
+
